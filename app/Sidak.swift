@@ -1,4 +1,4 @@
-// Sidak: the arc-live-folders PR review board as a macOS menu-bar popover.
+// Sidak: the arc-live-folders PR review board as a macOS menu-bar panel.
 // Loads panel.html from the extension folder through a custom URL scheme, with shim.js standing in for chrome.*.
 import Cocoa
 import WebKit
@@ -6,7 +6,7 @@ import Carbon.HIToolbox
 import UserNotifications
 import ServiceManagement
 
-// ⌃⌥P opens or closes the popover from anywhere (a Carbon hot key needs no accessibility permission).
+// ⌃⌥P opens or closes the board from anywhere (a Carbon hot key needs no accessibility permission).
 var hotKeyRef: EventHotKeyRef?
 func installHotKey(_ app: App) {
   var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -41,11 +41,10 @@ final class Files: NSObject, WKURLSchemeHandler {
   func webView(_ w: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
+final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
   // One menu-bar item: the inbox count; Mine is a view inside the board (Tab or a sideways swipe).
   var item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   var title = ""
-  let popover = NSPopover()
   var web: WKWebView!
 
   func applicationDidFinishLaunching(_ n: Notification) {
@@ -57,26 +56,15 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       let src = try! String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
       ucc.addUserScript(WKUserScript(source: src, injectionTime: when, forMainFrameOnly: true))
     }
-    // Glass under a transparent page; the material follows the system appearance, in the popover and detached.
-    let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 440, height: 640))
-    glass.material = .popover
-    glass.blendingMode = .behindWindow
-    glass.state = .active
-    web = WKWebView(frame: glass.bounds, configuration: cfg)
+    // The page is transparent over the panel's glass; the material follows the system appearance.
+    web = WKWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 640), configuration: cfg)
     web.setValue(false, forKey: "drawsBackground")
     web.underPageBackgroundColor = .clear
     web.uiDelegate = self
     web.navigationDelegate = self
     web.load(URLRequest(url: URL(string: "sidak://local/panel.html")!))
-    glass.addSubview(web)
-    let vc = NSViewController()
-    vc.view = glass
-    popover.contentViewController = vc
-    popover.contentSize = glass.frame.size
-    popover.behavior = .transient
-    // Drag the popover off the menu bar and it stays as its own window (resizable: the page has a wide layout from 760 px).
-    popover.delegate = self
-    web.autoresizingMask = [.width, .height]
+    // The one container for the page, for good: it hangs under the pill like a menu, or floats pinned.
+    embed(web, in: panel.contentView!)
     placeItem()
     UNUserNotificationCenter.current().delegate = self
     if notify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, err in NSLog("notifications: %d %@", ok, err?.localizedDescription ?? "") } }
@@ -86,7 +74,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       if (self.item.button?.window?.frame.origin.y ?? -1) <= 0 { self.placeItem() }
     }
     if ProcessInfo.processInfo.environment["SIDAK_SHOW"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.toggle() } }
-    // WebKit pauses the page while the popover is closed, so the title count comes from pr-board on a timer.
+    // WebKit pauses the page while the panel is hidden, so the title count comes from pr-board on a timer.
     counts()
     schedulePoll()
     installHotKey(self)
@@ -140,16 +128,12 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     return image
   }
 
-  func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
-  // Dragged off the menu bar and released: the implicit detached window turns into the pinned panel where it was dropped.
-  func popoverDidDetach(_ popover: NSPopover) {
-    let f = web.window?.frame ?? .zero
-    DispatchQueue.main.async { self.setPinned(true, at: NSPoint(x: f.minX, y: f.maxY)) }
-  }
-
-  // Pinned (sidakpin://1, p on the page, or a drag off the menu bar): the same web view, page state and all, floats in a glass
-  // panel over every space like Raycast Notes. It opens under the item the first time and where it was left after that.
+  // One glass panel holds the page. Unpinned (the default) it hangs under the pill and goes away when it loses focus, like a menu.
+  // Pinned (sidakpin://1, p on the page, or a drag by its top strip) it floats over every space like Raycast Notes and stays put:
+  // where it was dragged, remembered in UserDefaults panelTopLeft, else where it already is.
   var pinned = false
+  var dragging = false
+  var autoHidden = Date.distantPast
   lazy var panel: NSPanel = {
     let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 640), styleMask: [.nonactivatingPanel, .fullSizeContentView, .titled, .closable], backing: .buffered, defer: false)
     p.titlebarAppearsTransparent = true
@@ -157,6 +141,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     // No traffic lights: they would sit on the page's header. Closing (performClose) still unpins.
     for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { p.standardWindowButton(b)?.isHidden = true }
     p.isMovableByWindowBackground = true
+    // Floating, not popUpMenu, so the page's confirm() alerts (modal panel level) still come up above it.
     p.level = .floating
     p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
     p.hidesOnDeactivate = false
@@ -164,49 +149,68 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     p.isOpaque = false
     p.backgroundColor = .clear
     p.delegate = self
-    let glass = NSVisualEffectView()
-    glass.material = .popover
-    glass.blendingMode = .behindWindow
-    glass.state = .active
-    glass.wantsLayer = true
-    glass.layer?.cornerRadius = 30
-    glass.layer?.masksToBounds = true
-    p.contentView = glass
-    // The web view takes every click, so the page's top 14 px are the strip that moves the panel.
-    NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { e in
+    p.contentView = glassView(radius: 30)
+    // The web view takes every click, so the page's top 14 px are the strip that moves the panel (and pins it, see windowDidMove).
+    NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .leftMouseUp]) { [unowned self] e in
+      if e.type == .leftMouseUp { dragging = false; return e }
       guard e.window === p, e.locationInWindow.y > p.frame.height - 14 else { return e }
+      dragging = true
       p.performDrag(with: e)
       return nil
     }
     return p
   }()
+  // Unpin moves the panel back under the pill, still open.
   func setPinned(_ on: Bool, at corner: NSPoint? = nil) {
     guard on != pinned else { if on { panel.makeKeyAndOrderFront(nil) }; return }
     pinned = on
-    web.removeFromSuperview()
     if on {
-      popover.close()
-      let height = min(max(popover.contentSize.height, 240), 760)
-      let top = corner ?? UserDefaults.standard.string(forKey: "panelTopLeft").map(NSPointFromString)
-        .flatMap { p in NSScreen.screens.contains { $0.frame.contains(NSPoint(x: p.x + 1, y: p.y - 1)) } ? p : nil } ?? underItem()
-      panel.setFrame(NSRect(x: top.x, y: top.y - height, width: 440, height: height), display: false)
-      web.frame = panel.contentView!.bounds
-      panel.contentView!.addSubview(web)
-      panel.makeKeyAndOrderFront(nil)
-      panel.invalidateShadow()
-      NSApp.activate(ignoringOtherApps: true)
-      panel.makeFirstResponder(web)
+      let saved = UserDefaults.standard.string(forKey: "panelTopLeft").map(NSPointFromString)
+        .flatMap { p in NSScreen.screens.contains { $0.frame.contains(NSPoint(x: p.x + 1, y: p.y - 1)) } ? p : nil }
+      if let top = corner ?? saved { panel.setFrameTopLeftPoint(top) }
     } else {
-      panel.orderOut(nil)
-      let glass = popover.contentViewController!.view
-      web.frame = glass.bounds
-      glass.addSubview(web)
-      toggle()
+      panel.setFrameTopLeftPoint(underItem())
     }
-    // For the page's p key and styling: whether it is in the panel now (the close and drag paths change it too).
+    show()
+    // For the page's p key and styling: whether it is pinned now (the close and drag paths change it too).
     web.evaluateJavaScript("document.documentElement.dataset.pinned = '\(on ? 1 : 0)'")
   }
-  // Top-left corner under the status item, where the popover hangs, kept on its screen.
+  func show() {
+    panel.makeKeyAndOrderFront(nil)
+    panel.invalidateShadow()
+    NSApp.activate(ignoringOtherApps: true)
+    panel.makeFirstResponder(web)
+    // The page was paused while hidden: ask background.js for a fresh sync.
+    web.evaluateJavaScript("chrome.storage.local.set({ syncRequest: Date.now() })")
+  }
+  // Real Liquid Glass on macOS 26 (NSGlassEffectView), tinted toward near-black in dark mode; the older blur material before that.
+  func glassView(radius: CGFloat) -> NSView {
+    if #available(macOS 26, *) {
+      let g = NSGlassEffectView()
+      g.cornerRadius = radius
+      g.tintColor = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0, alpha: 0.28) : NSColor(white: 1, alpha: 0.12) }
+      return g
+    }
+    let v = NSVisualEffectView()
+    v.material = .popover
+    v.blendingMode = .behindWindow
+    v.state = .active
+    v.wantsLayer = true
+    v.layer?.cornerRadius = radius
+    v.layer?.masksToBounds = true
+    return v
+  }
+  // The glass view holds the page as its contentView; the fallback just as a subview.
+  func embed(_ v: NSView, in glass: NSView) {
+    v.frame = glass.bounds
+    v.autoresizingMask = [.width, .height]
+    if #available(macOS 26, *), let g = glass as? NSGlassEffectView { g.contentView = v } else { glass.addSubview(v) }
+  }
+  func detach(_ v: NSView) {
+    if #available(macOS 26, *), let g = v.superview as? NSGlassEffectView, g.contentView === v { g.contentView = nil }
+    v.removeFromSuperview()
+  }
+  // Top-left corner 6 px under the menu bar, centred on the status item, kept on its screen.
   func underItem() -> NSPoint {
     let f = item.button?.window?.frame ?? .zero
     let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
@@ -217,8 +221,20 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     return true
   }
   func windowDidMove(_ n: Notification) {
-    guard n.object as? NSWindow === panel, pinned else { return }
-    UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: panel.frame.minX, y: panel.frame.maxY)), forKey: "panelTopLeft")
+    guard n.object as? NSWindow === panel else { return }
+    let top = NSPoint(x: panel.frame.minX, y: panel.frame.maxY)
+    // Dragged off its place under the pill by the top strip: it stays there, pinned.
+    if !pinned, dragging, NSEvent.pressedMouseButtons & 1 == 1 { dragging = false; setPinned(true, at: top) }
+    if pinned { UserDefaults.standard.set(NSStringFromPoint(top), forKey: "panelTopLeft") }
+  }
+  // Unpinned, it goes away when focus moves elsewhere (another app, a click outside), not for one of its own alerts.
+  func windowDidResignKey(_ n: Notification) {
+    guard n.object as? NSWindow === panel, !pinned else { return }
+    DispatchQueue.main.async { [self] in
+      guard !pinned, !panel.isKeyWindow, NSApp.modalWindow == nil, panel.isVisible else { return }
+      panel.orderOut(nil)
+      autoHidden = Date()
+    }
   }
 
   // A review that settles (state.json flips to reviewed or failed) refreshes the counts and, with notify, posts a notification;
@@ -281,19 +297,14 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     done([.banner, .sound])
   }
 
+  // The item and ⌃⌥P: pinned, bring the panel forward; unpinned, open it under the pill or close it.
   @objc func toggle() {
-    // Pinned or detached: the page lives in its own window now; the hot key and the menu bar item bring it forward.
-    if !popover.isShown, let window = web.window, window.isVisible {
-      window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
-      web.evaluateJavaScript("chrome.storage.local.set({ syncRequest: Date.now() })")
-      return
-    }
-    if popover.isShown { popover.performClose(nil); return }
-    popover.show(relativeTo: item.button!.bounds, of: item.button!, preferredEdge: .minY)
-    NSApp.activate(ignoringOtherApps: true)
-    web.window?.makeFirstResponder(web)
-    // The page was paused while hidden: ask background.js for a fresh sync.
-    web.evaluateJavaScript("chrome.storage.local.set({ syncRequest: Date.now() })")
+    if pinned { show(); return }
+    if panel.isVisible { panel.orderOut(nil); return }
+    // The click on the item that took focus from the panel already closed it: that click must not reopen it.
+    if Date().timeIntervalSince(autoHidden) < 0.25 { return }
+    panel.setFrameTopLeftPoint(underItem())
+    show()
   }
 
   // A zsh command line's stdout and exit status.
@@ -365,20 +376,19 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   // shim.js → here. "review": run the opener like the Arc native host does.
   func userContentController(_ ucc: WKUserContentController, didReceive m: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
     guard let body = m.body as? [String: Any], let kind = body["kind"] as? String else { replyHandler(nil, "bad message"); return }
-    // sidakheight://<px>: the page's height after a render. The attached popover and the pinned panel fit it (240 to 760 px, the
-    // panel keeps its top edge); a detached window keeps the size it was given. Not an action: nothing runs and nothing closes.
+    // sidakheight://<px>: the page's height after a render. The panel fits it (240 to 760 px) and keeps its top edge.
+    // Not an action: nothing runs and nothing closes.
     if let url = body["url"] as? String, url.hasPrefix("sidakheight://") {
       let px = Double(url.dropFirst("sidakheight://".count).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) ?? 0
       NSLog("page height: %@", url)
-      if px > 0 && !popover.isDetached {
-        let size = NSSize(width: 440, height: min(max(px, 240), 760))
-        popover.contentSize = size
-        if pinned { panel.animator().setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height, width: 440, height: size.height), display: true) }
+      if px > 0 {
+        let height = min(max(px, 240), 760)
+        panel.animator().setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - height, width: 440, height: height), display: true)
       }
       replyHandler(["ok": true], nil)
       return
     }
-    // sidakpin://1 floats the board in the panel, sidakpin://0 puts it back in the popover. Not an action either.
+    // sidakpin://1 pins the panel where it is (or where it was last pinned), sidakpin://0 hangs it under the pill again. Not an action either.
     if let url = body["url"] as? String, url.hasPrefix("sidakpin://") {
       NSLog("pin: %@", url)
       replyHandler(["ok": true], nil)
@@ -392,9 +402,9 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       replyHandler(nil, nil)
     case "review":
       let url = body["url"] as? String ?? ""
-      // Settings, nudges and mark-ready run in place; only the cmux openers close the popover and bring cmux forward.
+      // Settings, nudges and mark-ready run in place; only the cmux openers close the unpinned panel and bring cmux forward.
       let inPlace = ["ccset:", "ccnudge:", "ccready:", "ccopen:"].contains { url.hasPrefix($0) }
-      if !inPlace { popover.performClose(nil) }
+      if !inPlace && !pinned { panel.orderOut(nil) }
       DispatchQueue.global().async {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -417,7 +427,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     }
   }
 
-  // Links on cards are target=_blank, and any http(s) navigation belongs in the browser, not the popover.
+  // Links on cards are target=_blank, and any http(s) navigation belongs in the browser, not the panel.
   func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration, for a: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
     if let u = a.request.url { NSWorkspace.shared.open(u) }
     return nil

@@ -48,8 +48,6 @@
   :root[data-app], :root[data-app] body { background: transparent; }
   :root[data-app] body { min-height: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
   @media (prefers-contrast: more) { :root[data-app] body { background: var(--lg-bg-primary); } }
-  /* The system popover material is mid-grey in dark mode; a near-black tint over it keeps the blur but reads as the darker sheet. */
-  @media (prefers-color-scheme: dark) { :root[data-app] { background: rgba(8, 8, 11, 0.62); } }
   button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }
   a, summary, button { -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }

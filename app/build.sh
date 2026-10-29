@@ -27,7 +27,9 @@ cat > $app/Contents/Info.plist <<PLIST
 </dict></plist>
 PLIST
 # Ad-hoc signed: notifications need a signed bundle.
-codesign --force --deep -s - $app
+# Ad-hoc signing gives every build a new hash, and macOS ties the Documents-folder grant to the signature's requirement:
+# pin the requirement to the bundle id so one "Allow" lasts across rebuilds. Any app signed with this id shares the grant.
+codesign --force --deep -s - -r='designated => identifier "dev.dezeto.sidak"' $app
 pkill -x Sidak 2>/dev/null || true
 sleep 1; open $app
 echo "built and launched $app"
