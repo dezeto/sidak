@@ -4,161 +4,213 @@
 <title>Pull requests</title>
 <link rel="preconnect" href="https://avatars.githubusercontent.com" />
 <link rel="preconnect" href="https://github.com" />
+<link rel="stylesheet" href="lg.css" />
 <style>
+  /* Liquid Glass: the --lg-* tokens live in lg.css; what follows is the panel built from them. */
   :root {
     --accent: #5b8def;
-    --bg: color-mix(in srgb, var(--accent) 6%, Canvas);
-    --muted: color-mix(in srgb, CanvasText 55%, transparent);
-    --faint: color-mix(in srgb, CanvasText 35%, transparent);
-    --hover: color-mix(in srgb, CanvasText 7%, transparent);
-    --track: color-mix(in srgb, CanvasText 6%, transparent);
-    --raised: Canvas;
-    --line: color-mix(in srgb, CanvasText 10%, transparent);
+    --hover: color-mix(in srgb, var(--lg-ink) 10%, transparent);
+    --row-hover: var(--lg-bg-interactive);
     --green: #1a7f37;
     --red: #cf222e;
     --amber: #9a6700;
     --grey: #59636e;
     --gold: #bf8700;
-    --disc: #2c2c31;
+    /* Row dots and the hero gauge: amber to review, blue running or waiting, green reviewed or ready, red needs me. */
+    --dot-amber: #f5b400;
+    --dot-blue: #5b8def;
+    --dot-green: #1f9a48;
+    --dot-red: #e0443e;
+    --dot-dim: rgba(0, 0, 0, 0.1);
     scrollbar-width: thin;
-    scrollbar-color: var(--line) transparent;
+    scrollbar-color: var(--lg-border-subtle) transparent;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #121214;
-      --raised: #333338; --hover: #1c1c1f; --track: #1e1e21;
       --green: #3fb950;
       --red: #f85149;
       --amber: #d29922;
       --grey: #9198a1;
       --gold: #e3b341;
-      --disc: #3a3a40;
+      --dot-green: #2bb45a;
+      --dot-dim: rgba(255, 255, 255, 0.14);
+      --row-hover: rgba(255, 255, 255, 0.06);
     }
   }
-  html { background: var(--bg); }
-  /* Popup width (Arc copy); a pinned tab shows the same narrow list, centred. */
-  /* A column at least the window's height, so the footer sits at the bottom under a short list too. */
-  body { display: flex; flex-direction: column; width: 440px; min-height: 100vh; margin: 0 auto; font: 13px/1.35 -apple-system, system-ui, sans-serif; background: var(--bg); color: CanvasText; }
+  html { background: Canvas; }
+  /* Popup width (Arc copy); a pinned tab shows the same narrow list, centred. In Arc the page is the sheet: tinted glass over Canvas.
+     A column at least the window's height, so the footer sits at the bottom under a short list too. */
+  body {
+    display: flex; flex-direction: column; width: 440px; min-height: 100vh; margin: 0 auto;
+    font: 13px/1.35 -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: var(--lg-ink); background: var(--lg-bg-primary);
+    -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  }
+  /* Sidak.app (shim.js sets data-app) draws the glass behind a transparent page and sizes its popover to the page (panel.js sendHeight),
+     so there the column is only as tall as its content. */
+  :root[data-app], :root[data-app] body { background: transparent; }
+  :root[data-app] body { min-height: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  @media (prefers-contrast: more) { :root[data-app] body { background: var(--lg-bg-primary); } }
   button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }
   a, summary, button { -webkit-tap-highlight-color: transparent; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }
   .icon { width: 16px; height: 16px; flex: none; }
+  /* Glass: a tinted capsule with a lit 1 px edge, worn by the header controls and the row buttons. */
+  .glass, .review { border: 1px solid var(--lg-border-color); background: var(--lg-bg-interactive); box-shadow: var(--lg-highlight); }
+  .glass, .review, #tabs button, .seg button {
+    transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast), transform var(--lg-duration-normal) var(--lg-easing-spring);
+  }
+  :is(button.glass, .review, .search):hover { background: var(--hover); }
+  :is(button.glass, .review):active { transform: scale(0.96); }
 
-  /* Header */
-  header { position: sticky; top: 0; z-index: 1; padding: 10px 12px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  /* Header: one line of glass controls. It and the footer turn to toolbar glass while the list runs under them (panel.js edges). */
+  header, #foot { transition: background-color var(--lg-duration-normal), box-shadow var(--lg-duration-normal); }
+  header { position: sticky; top: 0; z-index: 1; padding: 14px; }
+  :root[data-scrolled] header, :root[data-more] #foot {
+    background: var(--lg-bg-toolbar);
+    -webkit-backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-md)) saturate(var(--lg-saturate));
+  }
+  :root[data-scrolled] header { box-shadow: 0 1px 0 var(--lg-border-subtle); }
+  :root[data-more] #foot { box-shadow: 0 -1px 0 var(--lg-border-subtle); }
   /* Visually hidden: keeps a top heading for assistive tech. */
   h1 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  /* Footer: what a click runs (model, effort, auto) and the stale cut-off, then the sync status; the list scrolls above it. */
-  #foot { position: sticky; bottom: 0; z-index: 1; display: flex; padding: 6px 12px; border-top: 1px solid var(--line); background: var(--bg); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-  #foot-config { flex: none; }
-  #foot .pick { padding: 0; font-size: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
-  #foot .pick:hover { color: CanvasText; text-decoration-color: currentColor; }
-  #status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  #status:not(:empty)::before { content: ' · '; white-space: pre; }
-  #status[data-error='true'] { color: var(--red); }
-  .find { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-  .find > .search { margin-right: 2px; }
-  .search { display: flex; flex: 1; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px; background: var(--track); color: var(--faint); }
-  .search:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .search .icon { width: 14px; height: 14px; }
-  .search kbd { margin: 0; }
-  .search:focus-within kbd { display: none; }
-  #search { flex: 1; min-width: 0; padding: 5px 0; border: 0; background: none; color: CanvasText; font: inherit; font-size: 12px; outline: none; }
-  #search::placeholder { color: var(--faint); }
+  .find { display: flex; align-items: center; gap: 6px; }
+  /* Round glass buttons, 30 px: the profile switch, search while folded, settings. */
+  #view, #picks, #pin, .search { box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; padding: 0; border-radius: 15px; color: var(--lg-ink); }
+  /* Settings open: the button turns solid ink, a pressed toggle. Amber dot while auto review is on: Sidak.app starts reviews without a click. */
+  #picks { position: relative; }
+  #picks[aria-expanded='true'], #pin[aria-pressed='true'] { border-color: var(--lg-ink); background: var(--lg-ink); color: Canvas; }
+  /* Pin: Sidak.app only. Pinned, the board floats as a window without a title bar whose top 14 px drag it: a grip sits there,
+     and the header grows by that strip so nothing clickable is under it. */
+  :root:not([data-app]) #pin { display: none; }
+  :root[data-pinned='1'] header { padding-top: 28px; }
+  :root[data-pinned='1'] header::before { content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--lg-ink-muted); pointer-events: none; }
+  #picks[data-auto]::after { content: ''; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-amber); box-shadow: 0 0 0 1.5px Canvas; }
+  /* Search: a round glass button that unfolds into a capsule field on a click or /, and folds back once it is empty and loses focus.
+     While open it takes the tabs' place. */
+  .search { cursor: pointer; }
+  .search .icon { width: 15px; height: 15px; }
+  #search { width: 0; min-width: 0; padding: 0; border: 0; background: none; color: var(--lg-ink); font: inherit; font-size: 12.5px; outline: none; }
+  .search:focus-within, .search:has(#search:not(:placeholder-shown)) { flex: 1; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
+  .search:focus-within #search, #search:not(:placeholder-shown) { flex: 1; }
+  .search:has(#search:focus-visible) { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }
+  .find:has(.search:focus-within, #search:not(:placeholder-shown)) #tabs { display: none; }
+  #search::placeholder { color: var(--lg-ink-muted); }
   #search::-webkit-search-cancel-button { -webkit-appearance: none; }
   .pr[hidden] { display: none; }
-  /* Model + effort live in a popover under the sliders button; Arc's Chromium has CSS anchor positioning. */
-  #picks { position: relative; anchor-name: --picks; }
-  /* Amber dot while auto review is on: Sidak.app starts reviews without a click. */
-  #picks[data-auto]::after { content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
-  #picks-pop {
-    position-anchor: --picks; inset: auto; top: anchor(bottom); right: anchor(right); width: 220px; margin: 4px 0 0;
-    padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, CanvasText 6%, var(--bg));
-    color: CanvasText; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
-  }
-  #picks-pop p { margin: 0 0 4px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
-  #picks-pop .seg + p { margin-top: 8px; }
   /* Right-click menu on a card (panel.js openMenu), placed at the pointer. */
-  #menu { inset: auto; min-width: 140px; margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: CanvasText; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); }
-  #menu [data-do] { display: block; box-sizing: border-box; width: 100%; padding: 4px 8px; border-radius: 5px; color: inherit; font-size: 12px; text-align: start; text-decoration: none; }
+  #menu, #help {
+    border: 1px solid var(--lg-border-color); background: var(--lg-bg-toolbar); color: var(--lg-ink); box-shadow: var(--lg-highlight), var(--lg-shadow-high);
+    -webkit-backdrop-filter: blur(var(--lg-blur-xl)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-xl)) saturate(var(--lg-saturate));
+  }
+  #menu { inset: auto; min-width: 160px; margin: 0; padding: 5px; border-radius: 14px; }
+  #menu [data-do] { display: block; box-sizing: border-box; width: 100%; min-height: 28px; padding: 6px 10px; border-radius: 9px; color: inherit; font-size: 12px; text-align: start; text-decoration: none; }
   #menu [data-do]:hover { background: var(--accent); color: #fff; }
   #menu button:disabled { opacity: 0.5; background: none; color: inherit; cursor: default; }
-  #vip { box-sizing: border-box; display: block; width: 100%; padding: 5px 7px; border: 0; border-radius: 7px; background: var(--track); color: CanvasText; font: 11px/1.4 ui-monospace, Menlo, monospace; resize: vertical; }
-  #vip:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
-  .seg, #tabs { display: flex; flex: 1; gap: 1px; padding: 2px; border-radius: 8px; background: var(--track); }
-  .seg button, #tabs button { flex: 1; padding: 3px 4px; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-  .seg button:hover, #tabs button:hover { color: CanvasText; }
-  .seg button[aria-pressed='true'], #tabs button[aria-pressed='true'] { background: var(--raised); color: CanvasText; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--line); }
-  /* Popup: one list at a time behind the tabs; a search shows matches from every list. Wide: all columns, no tabs. */
-  #tabs { margin-top: 8px; }
-  #tabs:empty { display: none; }
-  /* Profile switch left of the search: the inbox tray on a dark disc while reviewing, my avatar on my own PRs ("A" on accent if it fails),
-     ringed in the accent. The badge counts the current profile's work and sits on the wrapper, outside the disc's clip. */
+  /* Profile switch: the inbox tray while reviewing, with a red dot while my own PRs need me; my avatar on my own PRs ("A" if it fails). */
   .switch { position: relative; display: grid; flex: none; }
-  #view { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; overflow: hidden; border-radius: 50%; background: var(--disc); color: #fff; }
-  body[data-view='mine'] #view { background: var(--track); box-shadow: 0 0 0 1.5px var(--accent); }
-  #view .icon { width: 14px; height: 14px; }
-  #view .me { position: relative; display: grid; place-items: center; width: 100%; height: 100%; font-size: 12px; font-weight: 700; }
-  #view .me:not(:has(img)) { background: var(--accent); }
+  #view { overflow: hidden; }
+  #view .me { position: relative; display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; font-size: 13px; font-weight: 700; }
+  #view .me:not(:has(img)) { background: linear-gradient(135deg, #c47a4a, #8e4e2a); color: #fff; }
   #view .me img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-  #view-count {
-    position: absolute; right: -5px; bottom: -4px; box-sizing: border-box; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
-    background: var(--accent); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
-    box-shadow: 0 0 0 1.5px var(--bg); pointer-events: none;
-  }
-  #view-count:empty { display: none; }
+  #view-count { position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-red); box-shadow: 0 0 0 1.5px Canvas; pointer-events: none; }
   body[data-view='mine'] #view .icon, body:not([data-view='mine']) #view .me { display: none; }
   /* The tab bar holds both profiles' tabs and shows the current one's. Nothing to switch without a board. */
   body[data-view='mine'] #tabs [data-group='inbox'], body:not([data-view='mine']) #tabs [data-group='mine'], body:not(:has(.board)) .switch { display: none; }
-  #tabs button { padding: 0 4px; height: 28px; font-size: 12px; font-weight: 500; }
-  .n { margin-left: 5px; color: var(--muted); }
+  /* Tabs: one glass segmented capsule centred between the switch and search; the lit lozenge is the open tab. */
+  #tabs { display: flex; flex: 0 1 auto; gap: 2px; min-width: 0; margin: 0 auto; padding: 2px; border-radius: 17px; }
+  #tabs:empty { display: none; }
+  #tabs:empty + .search { margin-left: auto; }
+  #tabs button { display: flex; align-items: center; gap: 5px; min-width: 0; height: 28px; padding: 0 11px; overflow: hidden; border-radius: 14px; font-size: 12px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
+  /* Four tabs on my own PRs: tighter, so two-digit counts still fit; past that a label ellipsizes. In Sidak.app the Pin button
+     takes a slot too, so there the round buttons are 28 px and my tabs a size smaller. */
+  body[data-view='mine'] #tabs button { padding: 0 6px; }
+  #tabs .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  :root[data-app] :is(#view, #picks, #pin, .search) { width: 28px; height: 28px; }
+  :root[data-app] body[data-view='mine'] #tabs { gap: 1px; }
+  :root[data-app] body[data-view='mine'] #tabs button { padding: 0 5px; font-size: 11.5px; }
+  :is(#tabs, .seg) button:hover { color: var(--lg-ink); }
+  :is(#tabs, .seg) button[aria-pressed='true'], .space[aria-pressed='true'] { background: var(--lg-bg-pressed); color: var(--lg-ink); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); }
+  .n { font-variant-numeric: tabular-nums; color: var(--lg-ink-muted); }
   #tabs .n[data-live] { color: var(--amber); }
+  @media (prefers-contrast: more) { :is(#tabs, .seg) button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px CanvasText; } }
+
+  /* Settings: a glass card that unfolds under the header, one line per setting; it stands in for the hero while open. */
+  #settings {
+    margin: 0 14px; padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
+    box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 0; animation: unfold var(--lg-duration-normal) var(--lg-easing-spring);
+  }
+  @keyframes unfold { from { opacity: 0; transform: translateY(-8px) scale(0.98); } }
+  body[data-settings] #hero, #hero:empty { display: none; }
+  .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+  .set > .l { font-size: 12.5px; font-weight: 500; }
+  .seg { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: var(--lg-bg-interactive); }
+  .seg button { height: 28px; padding: 0 11px; border-radius: 14px; font-size: 11.5px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
+  /* VIP authors: chips, then the field that adds one. */
+  .set.vip { flex-direction: column; align-items: stretch; gap: 6px; padding-top: 8px; }
+  .chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  #vip-list { display: contents; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; background: var(--lg-bg-pressed); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); font-size: 11.5px; font-weight: 500; }
+  .chip { box-sizing: border-box; max-width: 100%; }
+  .chip:has(img) { padding-left: 4px; }
+  .chip span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .chip img { flex: none; width: 18px; height: 18px; border-radius: 50%; }
+  .chip button { position: relative; flex: none; display: grid; place-items: center; width: 18px; height: 18px; padding: 0; border-radius: 50%; background: var(--lg-bg-interactive); color: var(--lg-ink-muted); font-size: 13px; line-height: 1; }
+  .chip button:hover { background: var(--hover); color: var(--lg-ink); }
+  .chip button::after { content: ''; position: absolute; inset: -5px; } /* a 28 px hit target around the 18 px × */
+  #vip { flex: 1; min-width: 100px; height: 28px; padding: 0 6px; border: 0; border-radius: 8px; background: none; color: var(--lg-ink); font: inherit; font-size: 11.5px; }
+  #vip::placeholder { color: var(--lg-ink-muted); }
+
+  /* Hero: the profile's tally in big type over a capsule gauge, one flex-proportional segment per state with PRs. */
+  #hero { padding: 2px 20px; }
+  .hero p { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
+  .hero strong { font-size: 22px; font-weight: 600; line-height: 26px; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
+  .hero p span { font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
+  .gauge { display: flex; gap: 3px; height: 10px; }
+  .gauge span { flex: 1 1 0; min-width: 6px; border-radius: 5px; background: var(--tone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
+  .gauge [data-tone='green'] { --tone: linear-gradient(#2bb45a, #1f9a48); }
+  .gauge [data-tone='amber'] { --tone: linear-gradient(#ffc43d, #f5b400); }
+  .gauge [data-tone='blue'] { --tone: linear-gradient(#7ba6f5, #5b8def); }
+  .gauge [data-tone='red'] { --tone: linear-gradient(#ee6a64, #e0443e); }
+  .gauge [data-tone='dim'] { --tone: var(--dot-dim); box-shadow: none; }
+  body[data-view='mine'] .hero[data-group='inbox'], body:not([data-view='mine']) .hero[data-group='mine'] { display: none; }
+
   @media (max-width: 759px) {
-    /* One list at a time: the current profile's open tab (panel.js marks it .active). */
-    .column:not(.active), .board .column > h2 { display: none; }
-    /* The tab already says each row's state, so the ring and its column show only while a search mixes the lists. */
-    .board:not([data-searching]) .pr { grid-template-columns: minmax(0, 1fr) auto; }
-    .board:not([data-searching]) .pr::before { display: none; }
-    .board:not([data-searching]) .meta { grid-column: 1; }
-    .board:not([data-searching]) :is(.time, .avatars, .actions) { grid-column: 2; }
+    /* One list at a time: the current profile's open tab (panel.js marks it .active), and under Inbox the Running list (.also) when it has rows. */
+    .column:not(.active, .also), .column.also:not(:has(.pr)), .column > h2 :is(.icon, .count) { display: none; }
     /* A search shows the matches from every list of the current profile, under their headings. */
     :where(body[data-view='inbox']) .board[data-searching] .column[data-group='inbox'],
     :where(body[data-view='mine']) .board[data-searching] .column[data-group='mine'] { display: block; }
-    .board[data-searching] .column > h2 { display: flex; }
     .board[data-searching] .column:not(:has(.pr:not([hidden]))) { display: none; }
   }
-  #refresh, #picks { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: var(--muted); }
-  #refresh:hover, #picks:hover, .find:has(:popover-open) #picks { background: var(--hover); color: CanvasText; }
   #refresh.spinning .icon { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { *, ::before { animation: none !important; transition: none !important; } }
 
-  nav { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--track); }
+  nav { display: flex; gap: 2px; margin-top: 10px; padding: 3px; border-radius: 17px; background: var(--lg-bg-interactive); }
   nav:empty { display: none; }
   /* Board: one tab's list in the popup, six columns (inbox row, Mine row) once there is room. */
-  .board { display: grid; gap: 4px; }
+  .board { display: grid; }
   @media (min-width: 760px) {
     body { width: auto; max-width: 1240px; padding: 0 16px; }
     #tabs { display: none; }
-    .board { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
-    .column { min-width: 0; padding: 4px; border-radius: 12px; background: color-mix(in srgb, CanvasText 3%, transparent); }
+    .search { margin-left: auto; }
+    .board { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; margin-top: 14px; padding: 0 14px; }
+    .column { min-width: 0; padding: 0 0 6px; overflow: hidden; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated); box-shadow: var(--lg-highlight); }
     /* Sidak.app opens panel.html#inbox or #mine: one menu-bar item per view. */
     body[data-view='inbox'] .column[data-group='mine'] { display: none; }
     body[data-view='mine'] .column[data-group='inbox'] { display: none; }
   }
   .space {
-    display: flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: 6px; min-width: 0;
-    padding: 6px 8px; border-radius: 7px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em;
-    text-transform: uppercase; color: var(--muted); white-space: nowrap; transition: background 0.15s, color 0.15s;
+    display: flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: 6px; min-width: 0; min-height: 28px;
+    padding: 0 8px; border-radius: 14px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--lg-ink-muted); white-space: nowrap; transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast);
   }
   .space span:last-child { overflow: hidden; text-overflow: ellipsis; }
-  .space:hover { color: CanvasText; }
-  .space[aria-pressed='true'] { background: var(--raised); color: CanvasText; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--line); }
+  .space:hover { color: var(--lg-ink); }
   .dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--dot); }
 
   /* Tree */
-  main { flex: 1; padding: 8px; }
-  hr { height: 1px; margin: 8px 8px; border: 0; background: var(--line); }
+  main { flex: 1; padding-bottom: 6px; }
+  hr { height: 1px; margin: 8px 20px; border: 0; background: var(--lg-border-subtle); }
   details { position: relative; }
   summary {
     display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px;
@@ -167,30 +219,37 @@
   summary::-webkit-details-marker { display: none; }
   summary::before {
     content: ''; width: 5px; height: 5px; flex: none; margin: 0 2px 0 1px;
-    border: solid var(--faint); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.15s;
+    border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform var(--lg-duration-normal) var(--lg-easing-spring);
   }
   details[open] > summary::before { transform: rotate(45deg) translate(-1px, -1px); }
-  summary:hover, .link:hover, .pr:hover { background: var(--hover); }
+  summary:hover, .link:hover { background: var(--lg-bg-interactive); }
+  .folder { margin: 0 12px; }
   .folder > summary { font-weight: 650; }
-  .folder > summary .icon { color: var(--muted); }
-  .folder[open]::after { content: ''; position: absolute; top: 32px; bottom: 4px; left: 12px; width: 1px; background: var(--line); }
+  .folder > summary .icon { color: var(--lg-ink-muted); }
+  .folder[open]::after { content: ''; position: absolute; top: 32px; bottom: 4px; left: 12px; width: 1px; background: var(--lg-border-subtle); }
   .folder > :not(summary) { margin-left: 14px; }
-  .column > h2 { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 8px 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
-  .column > h2 .icon { width: 14px; height: 14px; color: var(--muted); }
-  kbd { margin-left: auto; padding: 0 4px; border-radius: 4px; background: var(--track); font: 10px/16px ui-monospace, Menlo, monospace; color: var(--faint); }
-  #help { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: CanvasText; font-size: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); }
-  #help::backdrop { background: rgb(0 0 0 / 0.3); }
-  #help td { padding: 3px 8px 3px 0; }
+  /* Section labels: 11 px over a hairline (To review, Running, Stale). */
+  .column > h2, details.stale > summary {
+    display: flex; align-items: center; gap: 10px; margin: 0; padding: 14px 20px 6px; border-radius: 0;
+    font-size: 11px; font-weight: 600; line-height: 14px; letter-spacing: 0.2px; color: var(--lg-ink-muted);
+  }
+  .column > h2::after, details.stale > summary::after { content: ''; flex: 1; height: 1px; background: var(--lg-border-subtle); }
+  .column > h2 .icon { width: 13px; height: 13px; }
+  kbd { margin-left: auto; padding: 0 4px; border-radius: 4px; background: var(--lg-bg-interactive); font: 10px/16px ui-monospace, Menlo, monospace; color: var(--lg-ink-muted); }
+  #help { max-width: min(400px, calc(100vw - 40px)); padding: 12px 16px; overscroll-behavior: contain; border-radius: var(--lg-radius-lg); font-size: 12px; }
+  #help::backdrop { background: var(--lg-bg-scrim); }
+  #help td { padding: 3px 8px 3px 0; vertical-align: top; }
   #help kbd { margin: 0; font-size: 11px; }
-  .count { margin-left: auto; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
-  .empty { margin: 0; padding: 6px 8px 6px 30px; font-size: 12px; color: var(--muted); }
+  .count { font-variant-numeric: tabular-nums; }
+  .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
   /* Stale rows fold away at the end of a list, outside its count; a search opens the fold. */
-  details.stale > summary { margin-top: 2px; font-size: 12px; color: var(--muted); }
+  details.stale > summary { cursor: pointer; }
+  details.stale > summary:hover { background: none; color: var(--lg-ink); }
   .board[data-searching] details.stale:not(:has(.pr:not([hidden]))) { display: none; }
-  #help h2 { margin: 10px 0 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
-  #help p { margin: 4px 0 0; color: var(--muted); }
-  .ring { display: block; width: 16px; height: 16px; transform: rotate(-90deg); fill: none; stroke: CanvasText; stroke-width: 2; }
-  .ring .track { stroke: color-mix(in srgb, CanvasText 25%, transparent); }
+  #help h2 { margin: 10px 0 2px; font-size: 11px; font-weight: 600; color: var(--lg-ink-muted); }
+  #help p { margin: 4px 0 0; color: var(--lg-ink-muted); }
+  .ring { display: block; width: 16px; height: 16px; transform: rotate(-90deg); fill: none; stroke: var(--lg-ink); stroke-width: 2; }
+  .ring .track { stroke: color-mix(in srgb, var(--lg-ink) 25%, transparent); }
   .ring .run { stroke: var(--amber); }
   .ring .low { stroke: var(--red); }
 
@@ -198,46 +257,71 @@
   .link img { width: 16px; height: 16px; flex: none; border-radius: 3px; }
   .link span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
+  /* Rows, 52 px: a status dot, the title over a meta line, then reviewers and age; hover or j/k focus swaps those for the buttons. */
   .pr {
-    display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: center;
-    padding: 7px 8px; border-radius: 8px; color: inherit; text-decoration: none; scroll-margin-block: 96px 40px;
+    display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; row-gap: 2px; align-items: center;
+    box-sizing: border-box; min-height: 52px; padding: 8px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
+    transition: background-color var(--lg-duration-fast);
   }
-  /* Status ring: hollow = waiting, amber arc = Claude running, filled check = reviewed, red = failed. */
+  .pr:is(:hover, :focus-within) { background: var(--row-hover); }
+  .pr:focus-visible { outline-offset: -2px; }
   .pr > .icon { display: none; }
-  .pr::before { content: ''; grid-row: span 2; grid-column: 1; box-sizing: border-box; width: 14px; height: 14px; margin-left: 1px; border: 1.5px solid var(--faint); border-radius: 50%; }
-  .pr[data-claude='running']::before { border-color: var(--track); border-top-color: var(--amber); animation: spin 1.2s linear infinite; }
-  .pr[data-claude='reviewed']::before { border: 0; background: var(--green) center / 9px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' fill='none' stroke='%23071' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
-  .pr[data-claude='failed']::before { border-color: var(--red); }
-  .title { font-size: 13px; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Status dot: amber to review, blue running (it breathes), green reviewed, red failed; on my own PRs by what each needs next. */
+  .pr::before {
+    content: ''; grid-row: 1 / span 2; grid-column: 1; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--status); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status) 16%, transparent);
+  }
+  .pr { --status: var(--dot-amber); }
+  .pr[data-claude='running'], .pr[data-group='waiting'] { --status: var(--dot-blue); }
+  .pr[data-claude='reviewed'], .pr[data-group='ready'] { --status: var(--dot-green); }
+  .pr[data-claude='failed'], .pr[data-group='needs'] { --status: var(--dot-red); }
+  .pr[data-group='draft'] { --status: var(--grey); }
+  .pr[data-claude='running']::before { animation: breathe 1.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { opacity: 0.45; } }
+  .title, .meta { grid-column: 2; margin: 0 10px 0 12px; }
+  .title { grid-row: 1; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Author profile: a pill right after the title when it says more than the tab (the blocker, who is awaited). */
   .title:has(.pill) { display: flex; align-items: center; gap: 6px; }
   .title .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .pill { flex: none; padding: 0 6px; border-radius: 8px; font-size: 10.5px; font-weight: 600; line-height: 16px; color: var(--state); background: color-mix(in srgb, var(--state) 13%, transparent); }
+  .pill { flex: none; padding: 0 7px; border-radius: 8px; font-size: 10.5px; font-weight: 600; line-height: 16px; color: var(--state); background: color-mix(in srgb, var(--state) 14%, transparent); }
   .pill[data-group='needs'] { --state: var(--red); }
   .pill[data-group='waiting'] { --state: var(--amber); }
-  .icon.vip { width: 11px; height: 11px; margin-left: 3px; vertical-align: -1px; color: var(--gold); }
-    .pr[data-state='DRAFT'] { opacity: 0.7; }
-  /* Quick / Review take the avatars' spot on hover or j/k focus. */
-  .actions { display: none; gap: 4px; grid-column: 3; grid-row: 1 / span 2; }
+  .icon.vip { width: 11px; height: 11px; margin-right: 5px; vertical-align: -1px; color: var(--gold); }
+  .pr[data-state='DRAFT'] { opacity: 0.7; }
+  /* Skim / Deep take the avatars' and age's spot on hover or j/k focus. */
+  .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
   .pr:is(:hover, :focus-within) .actions { display: flex; }
   .pr:is(:hover, :focus-within):has(.actions) :is(.avatars, .time) { display: none; }
-  .time { grid-column: 3; grid-row: 1; justify-self: end; font-size: 11.5px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .meta { grid-column: 2; display: flex; align-items: center; gap: 8px; min-height: 16px; font-size: 11.5px; color: var(--muted); }
+  /* Three buttons (my own PR: Fix / Nudge / Merge first): the pill steps aside for the title, and the capsules tighten. */
+  .pr:is(:hover, :focus-within):has(.actions > :nth-child(3)) .pill { display: none; }
+  .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
+  .time { grid-column: 4; grid-row: 1 / span 2; font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  /* The meta line: words 10 px apart, no separators. */
+  .meta { grid-row: 2; display: flex; align-items: center; gap: 10px; min-height: 15px; font-size: 11.5px; line-height: 15px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
+  .meta > :empty { display: none; }
   .text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .state:not(:empty) { margin-right: 10px; }
+  .info > span + span { margin-left: 10px; }
   .state { font-weight: 600; color: var(--state); }
   .checks { font-size: 11px; font-weight: 700; color: var(--state); }
-  .avatars { grid-column: 3; grid-row: 2; display: flex; align-items: center; justify-self: end; }
-  .avatars img { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--state); }
-  .avatars img + img { margin-left: 1px; }
-  .more { margin-left: 5px; font-size: 11px; color: var(--muted); }
-  .claude { font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--state); }
-  .claude:empty { display: none; }
-  .claude { cursor: pointer; }
+  .avatars { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; }
+  .avatars:not(:empty) { margin-right: 10px; }
+  .avatars img { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--state); }
+  .avatars img + img { margin-left: -3px; }
+  .more { margin-left: 5px; font-size: 11px; color: var(--lg-ink-muted); }
+  .claude { font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--state); cursor: pointer; }
   .claude:hover { text-decoration: underline; }
   .claude svg { width: 13px; height: 13px; display: block; }
-  .review { height: 22px; padding: 0 9px; border-radius: 6px; background: var(--track); font-size: 11.5px; font-weight: 600; color: CanvasText; }
-  .review:hover { background: var(--hover); color: CanvasText; }
-  .review.merge, .review[data-depth='full'], .review.fix { background: var(--green); color: #fff; }
+  /* Row buttons: glass capsules with their key; Deep (and Fix or Merge on my own PRs, which then leave Deep as glass) filled with the accent,
+     a shade deeper so its white label keeps 4.5:1. */
+  .review { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 12px; font-weight: 600; color: var(--lg-ink); white-space: nowrap; }
+  .review kbd { margin-left: 7px; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--lg-ink) 10%, transparent); font: 600 10px/14px -apple-system, system-ui, sans-serif; color: var(--lg-ink-muted); }
+  .review:is(.merge, .fix), .actions:not(:has(.merge, .fix)) > .review[data-depth='full'] {
+    border-color: transparent; background: color-mix(in srgb, var(--lg-accent) 82%, #000); color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px color-mix(in srgb, var(--lg-accent) 35%, transparent);
+  }
+  .review:is(.merge, .fix):hover, .actions:not(:has(.merge, .fix)) > .review[data-depth='full']:hover { background: color-mix(in srgb, var(--lg-accent) 72%, #000); }
+  .review:is(.merge, .fix) kbd, .actions:not(:has(.merge, .fix)) > .review[data-depth='full'] kbd { background: rgba(0, 0, 0, 0.25); color: rgba(255, 255, 255, 0.9); }
   .review:disabled { opacity: 0.5; cursor: default; }
   .claude[data-state='reviewed'] { --state: var(--green); }
   .claude[data-state='failed'] { --state: var(--red); }
@@ -248,6 +332,21 @@
   [data-state='REVIEW_REQUIRED'], [data-state='PENDING'], [data-state='EXPECTED'] { --state: var(--amber); }
   [data-state='DRAFT'] { --state: var(--grey); }
   .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
+
+  /* Footer: what a click runs and the list settings as plain words (each opens the settings card), the sync status and its button, the hotkey. */
+  #foot {
+    position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 12px 20px 14px;
+    font-size: 11px; font-weight: 500; line-height: 14px; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  #foot-config { display: flex; flex: none; gap: 14px; }
+  #foot .pick { min-height: 28px; margin-block: -7px; padding: 0; font-size: inherit; }
+  #foot .pick:hover { color: var(--lg-ink); }
+  #status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: end; }
+  #status[data-error='true'] { color: var(--red); }
+  #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
+  #refresh .icon { width: 13px; height: 13px; }
+  #refresh:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
+  .hotkey { flex: none; }
 </style>
 <svg width="0" height="0" style="position: absolute" aria-hidden="true">
   <symbol id="i-pr" viewBox="0 0 16 16">
@@ -277,6 +376,9 @@
   <symbol id="i-sliders" viewBox="0 0 16 16">
     <path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM6 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
   </symbol>
+  <symbol id="i-pin" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" d="M5.25 2.25h5.5M6.5 2.25v3.5L4.25 8.75v.75h7.5v-.75L9.5 5.75v-3.5M8 9.5v4.25" />
+  </symbol>
   <symbol id="i-refresh" viewBox="0 0 16 16">
     <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12.25 1.75v2.9h-2.9" />
   </symbol>
@@ -284,42 +386,60 @@
 <header>
   <h1 id="space-title">Pull requests</h1>
   <div class="find">
-    <span class="switch"><button id="view" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true"></span></button><span id="view-count" aria-hidden="true"></span></span>
-    <label class="search">
+    <span class="switch"><button id="view" class="glass" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true"></span></button><span id="view-count" aria-hidden="true" hidden></span></span>
+    <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
+    <label class="search glass" title="Search (/)">
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
-      <kbd>/</kbd>
     </label>
-    <button id="picks" popovertarget="picks-pop" aria-label="Review model, effort and list settings"><svg class="icon"><use href="#i-sliders" /></svg></button>
-    <button id="refresh" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon"><use href="#i-refresh" /></svg></button>
-    <div id="picks-pop" popover>
-      <p>Model for new reviews</p>
-      <div class="seg" data-key="model" role="group" aria-label="Model for new reviews">
-        <button type="button" value="opus">Opus</button><button type="button" value="sonnet">Sonnet</button>
-      </div>
-      <p>Effort</p>
-      <div class="seg" data-key="effort" role="group" aria-label="Effort for new reviews">
-        <button type="button" value="medium">Med</button><button type="button" value="high">High</button>
-      </div>
-      <p>Claude profile</p>
-      <div class="seg" data-setting="profile" role="group" aria-label="Claude profile for new reviews" title="Reviews run with the profile's CLAUDE_CONFIG_DIR from config.json"></div>
-      <p>Auto review (quick)</p>
-      <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of the next Inbox PR with this model and effort, in a cmux workspace that does not take focus: VIPs first, then the oldest; one at a time, at most 10 a day">
-        <button type="button" value="off">Off</button><button type="button" value="on">On</button>
-      </div>
-      <p>Hide after</p>
-      <div class="seg" data-setting="staleDays" role="group" aria-label="Hide PRs not updated for" title="PRs not updated for this long fold into Stale in Inbox and Mine (x opens it)">
-        <button type="button" value="7">7 d</button><button type="button" value="30">30 d</button><button type="button" value="90">90 d</button><button type="button" value="0">Off</button>
-      </div>
-      <p><label for="vip">VIP authors, one login or email per line</label></p>
-      <textarea id="vip" name="vip" rows="3" spellcheck="false" autocomplete="off" placeholder="octocat&#10;someone@example.com"></textarea>
+    <button id="picks" class="glass" type="button" aria-expanded="false" aria-controls="settings" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg></button>
+    <button id="pin" class="glass" type="button" aria-pressed="false" aria-label="Keep the board floating" title="Keep the board floating (p)"><svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg></button>
+  </div>
+  <nav id="spaces" aria-label="Spaces"></nav>
+</header>
+<section id="settings" aria-label="Settings" hidden>
+  <div class="set">
+    <span class="l">Model</span>
+    <div class="seg" data-key="model" role="group" aria-label="Model for new reviews">
+      <button type="button" value="opus">Opus</button><button type="button" value="sonnet">Sonnet</button>
     </div>
   </div>
-  <div id="tabs" role="group" aria-label="PR lists"></div>
-  <nav id="spaces" aria-label="Spaces" style="margin-top: 6px"></nav>
-</header>
+  <div class="set">
+    <span class="l">Effort</span>
+    <div class="seg" data-key="effort" role="group" aria-label="Effort for new reviews">
+      <button type="button" value="medium">Med</button><button type="button" value="high">High</button>
+    </div>
+  </div>
+  <div class="set">
+    <span class="l">Profile</span>
+    <div class="seg" data-setting="profile" role="group" aria-label="Claude profile for new reviews" title="Reviews run with the profile's CLAUDE_CONFIG_DIR from config.json"></div>
+  </div>
+  <div class="set">
+    <span class="l">Auto review</span>
+    <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of the next Inbox PR with this model and effort, in a cmux workspace that does not take focus: VIPs first, then the oldest; one at a time, at most 10 a day">
+      <button type="button" value="off">Off</button><button type="button" value="on">On</button>
+    </div>
+  </div>
+  <div class="set">
+    <span class="l">Refresh every</span>
+    <div class="seg" data-setting="pollMinutes" role="group" aria-label="Sync PRs every" title="How often Sidak.app syncs the lists">
+      <button type="button" value="1">1 min</button><button type="button" value="2">2 min</button><button type="button" value="5">5 min</button><button type="button" value="10">10 min</button>
+    </div>
+  </div>
+  <div class="set">
+    <span class="l">Hide after</span>
+    <div class="seg" data-setting="staleDays" role="group" aria-label="Hide PRs not updated for" title="PRs not updated for this long fold into Stale in Inbox and Mine (x opens it)">
+      <button type="button" value="7">7 d</button><button type="button" value="30">30 d</button><button type="button" value="90">90 d</button><button type="button" value="0">Off</button>
+    </div>
+  </div>
+  <div class="set vip">
+    <label class="l" for="vip">VIP authors</label>
+    <div class="chips"><span id="vip-list"></span><input id="vip" name="vip" type="text" spellcheck="false" autocomplete="off" placeholder="login or email…" /></div>
+  </div>
+</section>
+<section id="hero"></section>
 <main id="list"></main>
-<footer id="foot"><span id="foot-config"></span><span id="status"></span></footer>
+<footer id="foot"><span id="foot-config"></span><span id="status"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button><span class="hotkey" title="Opens this panel from anywhere while Sidak.app runs">⌃⌥P</span></footer>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>
   <button type="button" data-do="branch">Copy branch</button>
@@ -343,16 +463,17 @@
     <tr><td><kbd>x</kbd></td><td>Show or hide the stale PRs in this list</td></tr>
     <tr><td><kbd>h</kbd></td><td>Snooze the focused card for a day (it waits in the stale fold); <kbd>h</kbd> there brings it back</td></tr>
     <tr><td><kbd>⇧R</kbd></td><td>Sync PRs now</td></tr>
-    <tr><td><kbd>/</kbd></td><td>Search every list, Esc clears</td></tr>
-    <tr><td><kbd>?</kbd></td><td>This list, Esc closes</td></tr>
+    <tr><td><kbd>p</kbd></td><td>Pin (Sidak.app): keep the board floating above other windows; again puts it back under the menu bar</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Search every list; Esc clears it, again closes it</td></tr>
+    <tr><td><kbd>?</kbd></td><td>This list, Esc closes; Esc also folds the settings away</td></tr>
   </table>
-  <p>Right-click a card for Zed, its branch, files, checks or link. Sliders: the Claude profile picks the CLAUDE_CONFIG_DIR from config.json that reviews run with, auto ones too.</p>
+  <p>Right-click a card for Zed, its branch, files, checks or link. Settings (the sliders button): the Claude profile picks the CLAUDE_CONFIG_DIR from config.json that reviews run with, auto ones too.</p>
   <h2>Menu bar ring</h2>
   <table>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="75 100" /></svg></td><td>Filled by the share of your queue already reviewed</td></tr>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="50 100" /><circle class="run" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="0 50 25 100" /></svg></td><td>Amber: reviews running now</td></tr>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle class="low" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="15 100" /></svg></td><td>Red: under a fifth done, the pile is growing</td></tr>
-    <tr><td><b>A</b></td><td>Auto review is on (sliders, amber dot): while Sidak.app runs, the next Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest; one at a time, at most 10 a day</td></tr>
+    <tr><td><b>A</b></td><td>Auto review is on (settings, amber dot): while Sidak.app runs, the next Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest; one at a time, at most 10 a day</td></tr>
   </table>
   <p>The number beside the ring is how many still wait for you. <kbd>⌃⌥P</kbd> opens this panel from anywhere; drag it off the menu bar to keep it as a window. A notification tells you when a review lands; click it to open the PR.</p>
 </dialog>
@@ -361,7 +482,7 @@
     <svg class="icon" aria-hidden="true"><use href="#i-pr" /></svg>
     <span class="title"></span>
     <span class="time"></span>
-    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info"></span></span><span class="claude"></span></span><span class="avatars"></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only">Skim</button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings">Deep</button></span>
+    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info"></span></span><span class="claude"></span></span><span class="avatars"></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only" aria-keyshortcuts="s">Skim<kbd aria-hidden="true">s</kbd></button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings" aria-keyshortcuts="d">Deep<kbd aria-hidden="true">d</kbd></button></span>
   </a>
 </template>
 <script src="pr.js"></script>

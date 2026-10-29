@@ -1,7 +1,7 @@
 #!/bin/zsh
 # The PR review board for the phone: the same reviews as the Arc panel, driven from a Remote Control session.
 #   pr-board board                          To review / Running / Reviewed
-#   pr-board auto                           one auto-review tick (Sidak.app runs it every 120 s); DRY=1 prints the URL only
+#   pr-board auto                           one auto-review tick (Sidak.app runs it on the panel's refresh interval (settings.json pollMinutes, default 2 min)); DRY=1 prints the URL only
 #   pr-board quick|review [<repo>] <pr>     start a review in cmux (repo defaults to the first reviewable one)
 #   pr-board status [<repo>] <pr>           run state + my latest review on the PR
 #   pr-board wait [<repo>] <pr>             block until the running review settles, then status

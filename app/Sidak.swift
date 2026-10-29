@@ -21,6 +21,10 @@ func installHotKey(_ app: App) {
 
 // The repo folder (the one above app/): build.sh writes it into Info.plist. Scripts run from there, as bin/<name>.
 let dir = URL(fileURLWithPath: Bundle.main.object(forInfoDictionaryKey: "SidakDir") as! String)
+// SIDAK_STATE points the watcher at a copy for a dry run (bin/pr-board, run from here, reads the same variable).
+let statePath = ProcessInfo.processInfo.environment["SIDAK_STATE"] ?? dir.appendingPathComponent("state.json").path
+// Notifications are off (the pill shows runs as they go); true requests authorization and posts settled reviews again.
+let notify = false
 
 final class Files: NSObject, WKURLSchemeHandler {
   let types = ["html": "text/html", "js": "text/javascript", "json": "application/json", "txt": "text/plain",
@@ -37,7 +41,7 @@ final class Files: NSObject, WKURLSchemeHandler {
   func webView(_ w: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
-final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate {
+final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
   // One menu-bar item: the inbox count; Mine is a view inside the board (Tab or a sideways swipe).
   var item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
   var title = ""
@@ -53,21 +57,29 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       let src = try! String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
       ucc.addUserScript(WKUserScript(source: src, injectionTime: when, forMainFrameOnly: true))
     }
-    web = WKWebView(frame: NSRect(x: 0, y: 0, width: 440, height: 640), configuration: cfg)
+    // Glass under a transparent page; the material follows the system appearance, in the popover and detached.
+    let glass = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 440, height: 640))
+    glass.material = .popover
+    glass.blendingMode = .behindWindow
+    glass.state = .active
+    web = WKWebView(frame: glass.bounds, configuration: cfg)
+    web.setValue(false, forKey: "drawsBackground")
+    web.underPageBackgroundColor = .clear
     web.uiDelegate = self
     web.navigationDelegate = self
     web.load(URLRequest(url: URL(string: "sidak://local/panel.html")!))
+    glass.addSubview(web)
     let vc = NSViewController()
-    vc.view = web
+    vc.view = glass
     popover.contentViewController = vc
-    popover.contentSize = web.frame.size
+    popover.contentSize = glass.frame.size
     popover.behavior = .transient
     // Drag the popover off the menu bar and it stays as its own window (resizable: the page has a wide layout from 760 px).
     popover.delegate = self
     web.autoresizingMask = [.width, .height]
     placeItem()
     UNUserNotificationCenter.current().delegate = self
-    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, err in NSLog("notifications: %d %@", ok, err?.localizedDescription ?? "") }
+    if notify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, err in NSLog("notifications: %d %@", ok, err?.localizedDescription ?? "") } }
     watchState()
     // An item created while the menu bar is hidden (a fullscreen space in front) stays off-screen for good; re-place it when apps switch.
     NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { _ in
@@ -76,7 +88,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     if ProcessInfo.processInfo.environment["SIDAK_SHOW"] != nil { DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.toggle() } }
     // WebKit pauses the page while the popover is closed, so the title count comes from pr-board on a timer.
     counts()
-    Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { _ in self.counts() }
+    schedulePoll()
     installHotKey(self)
     // Launch at login so the gauge is always up; switch it off in System Settings > General > Login Items.
     if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
@@ -87,7 +99,11 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     item.button?.image = gauge()
     item.button?.imagePosition = .imageLeading
-    item.button?.title = title
+    // A black capsule in a light or dark menu bar: the gauge and the title draw white on it.
+    item.button?.wantsLayer = true
+    item.button?.layer?.backgroundColor = NSColor(srgbRed: 10 / 255, green: 10 / 255, blue: 12 / 255, alpha: 1).cgColor
+    item.button?.layer?.cornerRadius = 11
+    showTitle()
     item.button?.target = self
     item.button?.action = #selector(toggle)
     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -96,7 +112,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   }
 
   // The ring as a battery gauge: filled by the reviewed share of the queue, an amber segment for runs in progress,
-  // red when under a fifth is done. Not a template (it carries colour); labelColor resolves per menu bar appearance.
+  // red when under a fifth is done. Not a template (it carries colour); white, on the black pill.
   var toReview = 0, running = 0, reviewed = 0, autoOn = false
   func gauge() -> NSImage {
     let (todo, live, done, auto) = (toReview, running, reviewed, autoOn)
@@ -107,13 +123,13 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
         p.appendArc(withCenter: NSPoint(x: 8, y: 8), radius: 5.5, startAngle: 90 - from * 360, endAngle: 90 - to * 360, clockwise: true)
         p.lineWidth = 2; p.lineCapStyle = .butt; color.setStroke(); p.stroke()
       }
-      arc(0, 0.9999, NSColor.labelColor.withAlphaComponent(0.25))
+      arc(0, 0.9999, NSColor.white.withAlphaComponent(0.25))
       let fill = CGFloat(done) / CGFloat(total), run = CGFloat(live) / CGFloat(total)
-      if fill > 0 { arc(0, fill, todo > 0 && fill < 0.2 ? .systemRed : .labelColor) }
+      if fill > 0 { arc(0, fill, todo > 0 && fill < 0.2 ? .systemRed : .white) }
       if run > 0 { arc(fill, fill + run, .systemOrange) }
       // Auto review on: an "A" in the middle of the ring, since its runs spend money without a click.
       if auto {
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 7.5, weight: .bold), .foregroundColor: NSColor.labelColor]
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 7.5, weight: .bold), .foregroundColor: NSColor.white]
         let a = NSAttributedString(string: "A", attributes: attrs)
         let size = a.size()
         a.draw(at: NSPoint(x: 8 - size.width / 2, y: 8 - size.height / 2))
@@ -125,13 +141,92 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   }
 
   func popoverShouldDetach(_ popover: NSPopover) -> Bool { true }
+  // Dragged off the menu bar and released: the implicit detached window turns into the pinned panel where it was dropped.
+  func popoverDidDetach(_ popover: NSPopover) {
+    let f = web.window?.frame ?? .zero
+    DispatchQueue.main.async { self.setPinned(true, at: NSPoint(x: f.minX, y: f.maxY)) }
+  }
 
-  // A review that settles (state.json flips to reviewed or failed) posts a notification; clicking it opens the PR.
-  // The file is watched, so this fires within a second of the write, and the gauge refreshes at the same time.
+  // Pinned (sidakpin://1, p on the page, or a drag off the menu bar): the same web view, page state and all, floats in a glass
+  // panel over every space like Raycast Notes. It opens under the item the first time and where it was left after that.
+  var pinned = false
+  lazy var panel: NSPanel = {
+    let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 640), styleMask: [.nonactivatingPanel, .fullSizeContentView, .titled, .closable], backing: .buffered, defer: false)
+    p.titlebarAppearsTransparent = true
+    p.titleVisibility = .hidden
+    // No traffic lights: they would sit on the page's header. Closing (performClose) still unpins.
+    for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { p.standardWindowButton(b)?.isHidden = true }
+    p.isMovableByWindowBackground = true
+    p.level = .floating
+    p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+    p.hidesOnDeactivate = false
+    p.isReleasedWhenClosed = false
+    p.isOpaque = false
+    p.backgroundColor = .clear
+    p.delegate = self
+    let glass = NSVisualEffectView()
+    glass.material = .popover
+    glass.blendingMode = .behindWindow
+    glass.state = .active
+    glass.wantsLayer = true
+    glass.layer?.cornerRadius = 30
+    glass.layer?.masksToBounds = true
+    p.contentView = glass
+    // The web view takes every click, so the page's top 14 px are the strip that moves the panel.
+    NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { e in
+      guard e.window === p, e.locationInWindow.y > p.frame.height - 14 else { return e }
+      p.performDrag(with: e)
+      return nil
+    }
+    return p
+  }()
+  func setPinned(_ on: Bool, at corner: NSPoint? = nil) {
+    guard on != pinned else { if on { panel.makeKeyAndOrderFront(nil) }; return }
+    pinned = on
+    web.removeFromSuperview()
+    if on {
+      popover.close()
+      let height = min(max(popover.contentSize.height, 240), 760)
+      let top = corner ?? UserDefaults.standard.string(forKey: "panelTopLeft").map(NSPointFromString)
+        .flatMap { p in NSScreen.screens.contains { $0.frame.contains(NSPoint(x: p.x + 1, y: p.y - 1)) } ? p : nil } ?? underItem()
+      panel.setFrame(NSRect(x: top.x, y: top.y - height, width: 440, height: height), display: false)
+      web.frame = panel.contentView!.bounds
+      panel.contentView!.addSubview(web)
+      panel.makeKeyAndOrderFront(nil)
+      panel.invalidateShadow()
+      NSApp.activate(ignoringOtherApps: true)
+      panel.makeFirstResponder(web)
+    } else {
+      panel.orderOut(nil)
+      let glass = popover.contentViewController!.view
+      web.frame = glass.bounds
+      glass.addSubview(web)
+      toggle()
+    }
+    // For the page's p key and styling: whether it is in the panel now (the close and drag paths change it too).
+    web.evaluateJavaScript("document.documentElement.dataset.pinned = '\(on ? 1 : 0)'")
+  }
+  // Top-left corner under the status item, where the popover hangs, kept on its screen.
+  func underItem() -> NSPoint {
+    let f = item.button?.window?.frame ?? .zero
+    let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
+    return NSPoint(x: min(max(f.midX - 220, screen.minX + 8), screen.maxX - 448), y: f.minY - 6)
+  }
+  func windowShouldClose(_ w: NSWindow) -> Bool {
+    if w === panel { setPinned(false); return false }
+    return true
+  }
+  func windowDidMove(_ n: Notification) {
+    guard n.object as? NSWindow === panel, pinned else { return }
+    UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: panel.frame.minX, y: panel.frame.maxY)), forKey: "panelTopLeft")
+  }
+
+  // A review that settles (state.json flips to reviewed or failed) refreshes the counts and, with notify, posts a notification;
+  // clicking it opens the PR. The file is watched, so this fires within a second of the write, and the pill refreshes with it.
   var stateSource: DispatchSourceFileSystemObject?
   var lastStates: [String: String]?
   func watchState() {
-    let path = dir.appendingPathComponent("state.json").path
+    let path = statePath
     let fd = open(path, O_EVTONLY)
     guard fd >= 0 else { NSLog("state.json not watchable"); return }
     let source = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write, .extend, .delete, .rename], queue: .main)
@@ -148,20 +243,25 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     source.resume()
     stateSource = source
     stateChanged()
-    UNUserNotificationCenter.current().getNotificationSettings { NSLog("notification status: %ld", $0.authorizationStatus.rawValue) }
+    if notify { UNUserNotificationCenter.current().getNotificationSettings { NSLog("notification status: %ld", $0.authorizationStatus.rawValue) } }
   }
   func stateChanged() {
-    guard let data = try? Data(contentsOf: dir.appendingPathComponent("state.json")),
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: statePath)),
           let json = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] else { return }
     let states = json.mapValues { $0["state"] as? String ?? "" }
     defer { lastStates = states }
+    // A run older than two hours is a closed tab that never settled (pr-board auto skips those too); keep it off the pill.
+    let cutoff = Date().timeIntervalSince1970 * 1000 - 2 * 3600 * 1000
+    runs = json.filter { $0.value["state"] as? String == "running" && (($0.value["at"] as? NSNumber)?.doubleValue ?? 0) > cutoff }
+      .map { (key: $0.key, quick: $0.value["depth"] as? String == "quick", at: ($0.value["at"] as? NSNumber)?.doubleValue ?? 0) }
+    showTitle()
     guard let last = lastStates else { return }  // first read: nothing to announce
     var settled = false
     for (key, state) in states where state != last[key] && (state == "reviewed" || state == "failed") {
       settled = true
       // key: owner/repo#123
       let parts = key.split(separator: "#")
-      guard parts.count == 2 else { continue }
+      guard notify, parts.count == 2 else { continue }
       let content = UNMutableNotificationContent()
       content.title = state == "reviewed" ? ["approved": "Approved", "changes": "Changes requested", "commented": "Commented"][json[key]?["verdict"] as? String ?? ""] ?? "Review posted" : "Review failed"
       content.body = String(parts[0].split(separator: "/").last ?? parts[0]) + "#" + parts[1] + (json[key]?["depth"] as? String == "quick" ? " (skim)" : "")
@@ -182,7 +282,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   }
 
   @objc func toggle() {
-    // Detached: the page lives in its own window now; the hot key and the menu bar item bring it forward.
+    // Pinned or detached: the page lives in its own window now; the hot key and the menu bar item bring it forward.
     if !popover.isShown, let window = web.window, window.isVisible {
       window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
       web.evaluateJavaScript("chrome.storage.local.set({ syncRequest: Date.now() })")
@@ -211,6 +311,32 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     return (text, p.terminationStatus)
   }
 
+  // pr-board runs every settings.json pollMinutes (1, 2, 5 or 10; default 2): read at launch and again when the page saves settings.
+  var pollTimer: Timer?
+  func schedulePoll() {
+    let settings = (try? Data(contentsOf: dir.appendingPathComponent("settings.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+    let minutes = settings?["pollMinutes"] as? Int ?? 2
+    let interval = TimeInterval([1, 2, 5, 10].contains(minutes) ? minutes : 2) * 60
+    pollTimer?.invalidate()
+    pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in self.counts() }
+    NSLog("poll every %.0f s", interval)
+  }
+
+  // While reviews run, the title names the most recently started one and its time so far ("crm#123 Deep 4:05 +1"),
+  // redrawn every 30 s by a timer that exists only while something runs; otherwise the plain count.
+  var runs: [(key: String, quick: Bool, at: Double)] = []
+  var runTick: Timer?
+  func showTitle() {
+    var text = title
+    if let run = runs.max(by: { $0.at < $1.at }) {
+      let secs = max(0, Int(Date().timeIntervalSince1970 - run.at / 1000))
+      let name = run.key.split(separator: "/").last.map(String.init) ?? run.key
+      text = " \(name) \(run.quick ? "Skim" : "Deep") \(secs / 60):\(String(format: "%02d", secs % 60))" + (runs.count > 1 ? " +\(runs.count - 1)" : "")
+      if runTick == nil { runTick = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in self.showTitle() } }
+    } else { runTick?.invalidate(); runTick = nil }
+    item.button?.attributedTitle = NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.white, .font: NSFont.menuBarFont(ofSize: 0)])
+  }
+
   // "<to review> ↻<running>" beside the icon, parsed from `pr-board board` (indented lines under each section).
   // Then one auto-review tick (`pr-board auto`); while auto mode is on the title reads "A <to review>", since its runs spend money.
   func counts() {
@@ -229,7 +355,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       DispatchQueue.main.async {
         (self.toReview, self.running, self.reviewed, self.autoOn) = (toReview, running, reviewed, autoOn)
         self.title = title
-        self.item.button?.title = title
+        self.showTitle()
         self.item.button?.image = self.gauge()
         self.item.button?.toolTip = "\(toReview) to review, \(running) running, \(reviewed) reviewed" + (autoOn ? " · \(auto)" : "")
       }
@@ -239,6 +365,27 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   // shim.js → here. "review": run the opener like the Arc native host does.
   func userContentController(_ ucc: WKUserContentController, didReceive m: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
     guard let body = m.body as? [String: Any], let kind = body["kind"] as? String else { replyHandler(nil, "bad message"); return }
+    // sidakheight://<px>: the page's height after a render. The attached popover and the pinned panel fit it (240 to 760 px, the
+    // panel keeps its top edge); a detached window keeps the size it was given. Not an action: nothing runs and nothing closes.
+    if let url = body["url"] as? String, url.hasPrefix("sidakheight://") {
+      let px = Double(url.dropFirst("sidakheight://".count).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) ?? 0
+      NSLog("page height: %@", url)
+      if px > 0 && !popover.isDetached {
+        let size = NSSize(width: 440, height: min(max(px, 240), 760))
+        popover.contentSize = size
+        if pinned { panel.animator().setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - size.height, width: 440, height: size.height), display: true) }
+      }
+      replyHandler(["ok": true], nil)
+      return
+    }
+    // sidakpin://1 floats the board in the panel, sidakpin://0 puts it back in the popover. Not an action either.
+    if let url = body["url"] as? String, url.hasPrefix("sidakpin://") {
+      NSLog("pin: %@", url)
+      replyHandler(["ok": true], nil)
+      let on = url.dropFirst("sidakpin://".count).trimmingCharacters(in: CharacterSet(charactersIn: "/")) == "1"
+      DispatchQueue.main.async { self.setPinned(on) }
+      return
+    }
     switch kind {
     case "log":
       NSLog("page: %@", body["text"] as? String ?? "")
@@ -261,8 +408,8 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
         let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
         DispatchQueue.main.async {
           replyHandler(["ok": p.terminationStatus == 0, "error": text], nil)
-          // A settings change (auto on/off, stale cut-off) redraws the gauge now instead of at the next 2-minute tick.
-          if url.hasPrefix("ccset:") { self.counts() }
+          // A settings change (auto on/off, stale cut-off, poll interval) redraws the gauge now and restarts the poll timer.
+          if url.hasPrefix("ccset:") { self.counts(); self.schedulePoll() }
         }
       }
     default:

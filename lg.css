@@ -1,0 +1,92 @@
+/* Liquid Glass tokens for the Sidak panel: light values here, dark ones under prefers-color-scheme.
+   Values from the MainGlass / MineGlass mocks: translucent tinted glass, blur + saturate, a lit 1 px edge, capsule controls, spring motion. */
+:root {
+  --lg-bg-primary: rgba(255, 255, 255, 0.62); /* the sheet */
+  --lg-bg-toolbar: rgba(255, 255, 255, 0.72); /* header and footer while the list runs under them */
+  --lg-bg-interactive: rgba(0, 0, 0, 0.05); /* glass controls, segmented tracks, row hover */
+  --lg-bg-pressed: rgba(255, 255, 255, 0.9); /* the lit lozenge of the picked segment */
+  --lg-bg-elevated: rgba(255, 255, 255, 0.55); /* settings card */
+  --lg-bg-scrim: rgba(0, 0, 0, 0.18); /* behind a modal */
+  --lg-blur-sm: 8px;
+  --lg-blur-md: 24px;
+  --lg-blur-lg: 48px;
+  --lg-blur-xl: 64px;
+  --lg-saturate: 180%;
+  --lg-border-color: rgba(255, 255, 255, 0.7); /* the lit edge of glass */
+  --lg-border-subtle: rgba(0, 0, 0, 0.08); /* hairlines */
+  --lg-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.8); /* light catching the top edge */
+  --lg-shadow-elevated: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(30, 30, 60, 0.1);
+  --lg-shadow-high: 0 30px 70px rgba(30, 30, 60, 0.22);
+  --lg-radius-md: 16px;
+  --lg-radius-lg: 20px;
+  --lg-radius-xl: 30px;
+  --lg-duration-fast: 120ms;
+  --lg-duration-normal: 220ms;
+  --lg-easing-spring: cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  /* Text: both pass 4.5:1 on the sheet. */
+  --lg-ink: #1a1a1f;
+  --lg-ink-muted: #5c5c66;
+  --lg-accent: #1f9a48;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lg-bg-primary: rgba(12, 12, 16, 0.8);
+    --lg-bg-toolbar: rgba(12, 12, 16, 0.86);
+    --lg-bg-interactive: rgba(255, 255, 255, 0.07);
+    --lg-bg-pressed: rgba(255, 255, 255, 0.16);
+    --lg-bg-elevated: rgba(255, 255, 255, 0.05);
+    --lg-bg-scrim: rgba(0, 0, 0, 0.45);
+    --lg-border-color: rgba(255, 255, 255, 0.12);
+    --lg-border-subtle: rgba(255, 255, 255, 0.08);
+    --lg-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --lg-shadow-elevated: 0 8px 24px rgba(0, 0, 0, 0.3);
+    --lg-shadow-high: 0 30px 70px rgba(0, 0, 0, 0.45);
+    --lg-ink: #f2f2f5;
+    --lg-ink-muted: #9a9aa4;
+  }
+}
+
+/* More contrast (or less transparency): solid surfaces, no blur. */
+@media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
+  :root {
+    --lg-bg-primary: Canvas;
+    --lg-bg-toolbar: Canvas;
+    --lg-bg-elevated: Canvas;
+    --lg-bg-pressed: Canvas;
+    --lg-bg-interactive: color-mix(in srgb, CanvasText 8%, Canvas);
+    --lg-blur-sm: 0px;
+    --lg-blur-md: 0px;
+    --lg-blur-lg: 0px;
+    --lg-blur-xl: 0px;
+    --lg-saturate: 100%;
+  }
+}
+/* More contrast: opaque borders and full-strength ink as well. */
+@media (prefers-contrast: more) {
+  :root {
+    --lg-border-color: CanvasText;
+    --lg-border-subtle: color-mix(in srgb, CanvasText 50%, Canvas);
+    --lg-highlight: 0 0 #0000;
+    --lg-ink: CanvasText;
+    --lg-ink-muted: color-mix(in srgb, CanvasText 80%, Canvas);
+  }
+}
+
+/* Reduced motion: no transforms, no animated blur, no spring; state changes land at once. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --lg-duration-fast: 0ms;
+    --lg-duration-normal: 0ms;
+    --lg-easing-spring: linear;
+  }
+  *,
+  ::before,
+  ::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  :active {
+    transform: none !important;
+  }
+}

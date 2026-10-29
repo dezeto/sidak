@@ -22,23 +22,24 @@ function applyFilter() {
   list.querySelector('.board')?.toggleAttribute('data-searching', Boolean(query));
 }
 search.oninput = applyFilter;
+// Esc clears the query; on an empty field it blurs, which folds the field back into its round button.
 search.onkeydown = (event) => {
-  if (event.key === 'Escape') {
-    search.value = '';
-    applyFilter();
-    search.blur();
-  }
+  if (event.key !== 'Escape') return;
+  if (!search.value) return search.blur();
+  search.value = '';
+  applyFilter();
 };
 const rowTemplate = document.getElementById('pr').content.firstElementChild;
 
-const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes requested', REVIEW_REQUIRED: 'Needs review', DRAFT: 'Draft' };
+// No word for REVIEW_REQUIRED: the section label (To review) and the amber dot say it.
+const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes requested', REVIEW_REQUIRED: '', DRAFT: 'Draft' };
 const REVIEWER_LABELS = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', PENDING: 'review pending' };
-// The one button on my own PR, by authorState().action: [label, tooltip]. The opener runs ccfix / ccnudge / ccmerge / ccready.
+// The one button on my own PR, by authorState().action: [label, tooltip, key]. The opener runs ccfix / ccnudge / ccmerge / ccready.
 const AUTHOR_ACTIONS = {
-  fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review'],
-  nudge: ['Nudge', 'Re-request review from everyone still pending'],
-  merge: ['Merge', 'Squash-merge and delete the branch'],
-  ready: ['Mark ready', 'Mark ready for review'],
+  fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review', 'f'],
+  nudge: ['Nudge', 'Re-request review from everyone still pending', 'n'],
+  merge: ['Merge', 'Squash-merge and delete the branch', 'm'],
+  ready: ['Mark ready', 'Mark ready for review', 'r'],
 };
 const CHECKS = {
   SUCCESS: ['✓', 'Checks passed'],
@@ -60,13 +61,22 @@ const el = (tag, props) => Object.assign(document.createElement(tag), props);
 let activeSpace = saved('space', null);
 // Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
 const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
-// The pickers sit in a popover; the sliders button's tooltip names the current picks.
+// The pickers sit in the settings card; the sliders button's tooltip names the current picks.
 const picksButton = document.getElementById('picks');
-for (const seg of document.querySelectorAll('#picks-pop .seg[data-key]')) {
+// Settings: the sliders button unfolds a card under the header (it stands in for the hero) and folds it again; Esc folds it too.
+const settingsCard = document.getElementById('settings');
+function toggleSettings(open = settingsCard.hidden) {
+  settingsCard.hidden = !open;
+  picksButton.setAttribute('aria-expanded', open);
+  document.body.toggleAttribute('data-settings', open);
+  if (open) scrollTo(0, 0);
+}
+picksButton.onclick = () => toggleSettings();
+for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
   const key = seg.dataset.key;
   const show = () => {
     for (const button of seg.children) button.setAttribute('aria-pressed', button.value === picks[key]);
-    const pressed = [...document.querySelectorAll('#picks-pop .seg[data-key] [aria-pressed="true"]')].map((button) => button.textContent);
+    const pressed = [...document.querySelectorAll('#settings .seg[data-key] [aria-pressed="true"]')].map((button) => button.textContent);
     picksButton.title = `Reviews use ${pressed.join(' · ')}`;
   };
   // settings.json carries the picks too: pr-board auto starts its reviews with them.
@@ -91,10 +101,11 @@ async function loadConfig() {
   return res?.ok ? res.json().catch(() => null) : null;
 }
 
-// settings.json sits next to state.json and is shared with Sidak.app and bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze }.
+// settings.json sits next to state.json and is shared with Sidak.app and bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze, pollMinutes }.
+// pollMinutes: how often Sidak.app's timer syncs.
 // Read like reviewState(), written through the opener (ccset://); localStorage caches it so the header renders before the fetch.
 // No profile picked yet: config.defaultProfile.
-const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {} };
+const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, pollMinutes: 2 };
 let settings = { ...DEFAULT_SETTINGS, ...saved('settings', {}) };
 // While a write is in flight the file is older than the page, so renders keep the page's copy.
 let settingsWrites = 0;
@@ -127,28 +138,33 @@ function toggleSnooze(key) {
   if (!(settings.snooze?.[key] > now)) snooze[key] = now + 86400000;
   saveSettings({ snooze });
 }
-// Hide after (the stale cut-off) and the VIP list sit in the sliders popover under model and effort.
-const staleSeg = document.querySelector('#picks-pop [data-setting="staleDays"]');
+// Refresh every, Hide after (the stale cut-off) and the VIP list sit in the settings card under model and effort.
+const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]');
+const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const vipBox = document.getElementById('vip');
+const vipList = document.getElementById('vip-list');
 // Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the sliders button wears an amber dot while on.
-const autoSeg = document.querySelector('#picks-pop [data-setting="auto"]');
+const autoSeg = document.querySelector('#settings [data-setting="auto"]');
 // Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
-const profileSeg = document.querySelector('#picks-pop [data-setting="profile"]');
-// The footer names what a click runs and the list settings, in the pickers' words; model and effort open the sliders popover.
+const profileSeg = document.querySelector('#settings [data-setting="profile"]');
+// The footer names what a click runs and the list settings, in the pickers' words, as plain words that open the settings card.
 // The sync status (#status) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
 function renderFoot() {
-  const label = (key) => document.querySelector(`#picks-pop .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
-  const pick = (text) => {
-    const button = el('button', { type: 'button', className: 'pick', textContent: text, title: 'Change profile, model and effort for new reviews' });
-    button.setAttribute('popovertarget', 'picks-pop');
-    return button;
-  };
+  const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
+  const pick = (text, what) => el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: open settings`, onclick: () => toggleSettings(true) });
   const profile = settings.profile || config.defaultProfile;
-  const parts = [profile && pick(profile), pick(label('model')), pick(label('effort')), settings.auto?.on && 'Auto on', settings.staleDays > 0 && `Stale ${settings.staleDays} d`].filter(Boolean);
-  footConfig.replaceChildren(...parts.flatMap((part, i) => (i ? [' · ', part] : [part])));
+  footConfig.replaceChildren(...[
+    profile && pick(profile, 'Claude profile for new reviews'),
+    pick(label('model'), 'Model for new reviews'),
+    pick(label('effort'), 'Effort for new reviews'),
+    pick(`${settings.pollMinutes} min`, 'Sidak.app syncs this often'),
+    settings.auto?.on && pick('Auto on', 'Auto review is on'),
+    settings.staleDays > 0 && pick(`Stale ${settings.staleDays} d`, 'PRs not updated for this long fold into Stale'),
+  ].filter(Boolean));
 }
 function showSettings() {
+  for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
@@ -158,27 +174,46 @@ function showSettings() {
   }
   for (const button of profileSeg.children) button.setAttribute('aria-pressed', button.value === (settings.profile || config.defaultProfile));
   picksButton.toggleAttribute('data-auto', autoOn);
-  if (document.activeElement !== vipBox) vipBox.value = settings.vip.join('\n');
+  showVip();
   renderFoot();
 }
+pollSeg.onclick = ({ target }) => target.value && saveSettings({ pollMinutes: Number(target.value) });
 staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Number(target.value) });
 // Turning it on writes the picks as well, so the runs use the model and effort shown here.
 autoSeg.onclick = ({ target }) => target.value && saveSettings({ auto: { ...settings.auto, on: target.value === 'on' }, ...picks });
 profileSeg.onclick = ({ target }) => target.value && saveSettings({ profile: target.value });
-let vipTyping;
-const saveVip = () => {
-  clearTimeout(vipTyping);
-  vipTyping = null;
-  const vip = vipBox.value.split('\n').map((line) => line.trim()).filter(Boolean);
-  if (vip.join('\n') !== settings.vip.join('\n')) saveSettings({ vip });
+// VIP authors: a chip per login or email, × drops it; Enter in the field (or leaving it) adds what was typed. settings.vip stays a list of strings.
+function showVip() {
+  if (vipList.dataset.shown === settings.vip.join('\n')) return;
+  vipList.dataset.shown = settings.vip.join('\n');
+  vipList.replaceChildren(...settings.vip.map((entry) => {
+    const chip = el('span', { className: 'chip' });
+    // A login wears its GitHub avatar; an email has none.
+    if (!entry.includes('@')) {
+      const img = el('img', { src: `https://github.com/${encodeURIComponent(entry)}.png?size=36`, alt: '', width: 18, height: 18 });
+      img.onerror = () => img.remove();
+      chip.append(img);
+    }
+    const remove = el('button', { type: 'button', textContent: '×', title: `Remove ${entry}`, ariaLabel: `Remove ${entry}` });
+    remove.onclick = () => {
+      saveSettings({ vip: settings.vip.filter((v) => v !== entry) });
+      vipBox.focus();
+    };
+    chip.append(el('span', { textContent: entry, title: entry }), remove);
+    return chip;
+  }));
+}
+function addVip() {
+  const entry = vipBox.value.trim();
+  vipBox.value = '';
+  if (entry && !settings.vip.some((v) => v.toLowerCase() === entry.toLowerCase())) saveSettings({ vip: [...settings.vip, entry] });
+}
+vipBox.onkeydown = (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  addVip();
 };
-vipBox.oninput = () => {
-  clearTimeout(vipTyping);
-  vipTyping = setTimeout(saveVip, 600);
-};
-// Closing the popup inside the debounce must not lose the edit.
-vipBox.onblur = saveVip;
-addEventListener('pagehide', () => vipTyping && saveVip());
+vipBox.onblur = addVip;
 showSettings();
 
 function icon(id, className = 'icon') {
@@ -234,14 +269,14 @@ function prRow(pr) {
   row.querySelector('.title').textContent = pr.title;
   row.querySelector('.time').textContent = ago(pr.updatedAt);
   row.querySelector('.state').textContent = REVIEW_LABELS[pr.review];
-  // A VIP author gets a gold star right after the name.
+  // The meta line is words 10 px apart (CSS), no separators. A VIP author gets a gold star in front of the title.
   const info = row.querySelector('.info');
-  info.replaceChildren(['', `${pr.repo} #${pr.number}`, pr.author].filter((part) => part !== null).join(' · '));
-  if (isVip(pr, settings.vip)) info.append(icon('i-star', 'icon vip'));
-  info.append(pr.claude === 'reviewed' && pr.depth === 'quick' ? ' · quick review' : '', VERDICTS[pr.verdict] ? ` · ${VERDICTS[pr.verdict]}` : '', pr.auto ? ' · auto' : '');
+  const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
+  info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author, pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', VERDICTS[pr.verdict], pr.auto && 'auto'));
+  if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
   row.oncontextmenu = (event) => openMenu(event, pr);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
-  if (snoozedUntil(pr) > Date.now()) info.append(` · snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+  if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
   const [glyph = '', label = ''] = CHECKS[pr.checks] ?? [];
   const checks = Object.assign(row.querySelector('.checks'), { textContent: glyph, title: label });
@@ -283,20 +318,27 @@ function prRow(pr) {
     // My PR: a pill after the title when it says more than the tab (the blocker, who is awaited), the reason as the second line,
     // the next step as a button in front of Skim / Deep (a self-check: claude-review prints the findings instead of posting them).
     const { group, pill, reason, action } = pr.next;
+    // The status dot follows the group: red needs me, blue waiting, green ready, grey draft.
+    row.dataset.group = group;
     if (pill) {
       const tag = el('span', { className: 'pill', textContent: pill });
       tag.dataset.group = group;
       row.querySelector('.title').replaceChildren(el('span', { className: 'name', textContent: pr.title }), tag);
     }
     row.querySelector('.state').textContent = '';
-    info.textContent = `${pr.repo} #${pr.number} · ${reason}`;
-    const [label, tip] = AUTHOR_ACTIONS[action] ?? [];
-    if (label) actions.prepend(el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip }));
-    if (label) actions.firstElementChild.dataset.depth = action;
+    info.replaceChildren(...words(`${pr.repo} #${pr.number}`, ...reason.split(' · ')));
+    const [label, tip, key] = AUTHOR_ACTIONS[action] ?? [];
+    if (label) {
+      const button = el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip, ariaKeyShortcuts: key });
+      button.dataset.depth = action;
+      button.append(el('kbd', { textContent: key, ariaHidden: 'true' }));
+      actions.prepend(button);
+    }
   }
   if (!config.reviewable.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
   for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
-  if (pr.claude === 'reviewed') actions.lastElementChild.textContent = 'Again';
+  // The label is the button's first text node; its key hint stays.
+  if (pr.claude === 'reviewed') actions.lastElementChild.firstChild.data = 'Again';
 
   const avatars = row.querySelector('.avatars');
   avatars.append(...pr.reviewers.slice(0, MAX_AVATARS).map(avatar));
@@ -305,14 +347,15 @@ function prRow(pr) {
   return row;
 }
 
-// The popup shows one column at a time, picked by a tab; the heading shows in the wide layout and while searching.
+// The popup shows one column at a time, picked by a tab, under its section label; Inbox's label says what is left.
 // Stale rows close in a fold at the bottom, outside the count.
+const SECTION_LABELS = { Inbox: 'To review' };
 function column(title, iconId, prs, group = 'inbox', stale = []) {
   const section = el('section', { className: 'column' });
   section.dataset.tab = title;
   section.dataset.group = group;
   const heading = el('h2');
-  heading.append(icon(iconId), el('span', { textContent: title }), el('span', { className: 'count', textContent: prs.length }));
+  heading.append(icon(iconId), el('span', { textContent: SECTION_LABELS[title] ?? title }), el('span', { className: 'count', textContent: prs.length }));
   section.append(heading, ...(prs.length ? prs.map(prRow) : [el('p', { className: 'empty', textContent: 'Nothing here' })]));
   if (stale.length) section.append(staleFold(stale));
   return section;
@@ -321,7 +364,7 @@ function column(title, iconId, prs, group = 'inbox', stale = []) {
 function staleFold(prs) {
   const details = el('details', { className: 'stale' });
   const summary = el('summary');
-  summary.append(el('span', { textContent: 'Stale' }), el('span', { className: 'count', textContent: prs.length }));
+  summary.append(el('span', { className: 'count', textContent: `Stale ${prs.length}` }));
   details.append(summary, ...prs.map(prRow));
   return details;
 }
@@ -334,17 +377,21 @@ function showTab(title, group) {
   markActive();
 }
 // The active list is the current profile's open tab: its button pressed, its column the one the popup shows.
+// The Inbox tab also lists what is running (.also), as a second section.
 function markActive() {
   for (const button of tabsBar.children) button.setAttribute('aria-pressed', button.value === openTab[button.dataset.group]);
   const tab = openTab[document.body.dataset.view];
-  for (const section of list.querySelectorAll('.column')) section.classList.toggle('active', section.dataset.tab === tab);
+  for (const section of list.querySelectorAll('.column')) {
+    section.classList.toggle('active', section.dataset.tab === tab);
+    section.classList.toggle('also', tab === 'Inbox' && section.dataset.tab === 'Running');
+  }
 }
 
 // Both profiles' tabs sit in the bar; the CSS shows the current profile's.
 function tabButton(title, count, group) {
   const button = el('button', { type: 'button', value: title, onclick: () => showTab(title, group) });
   button.dataset.group = group;
-  button.append(title);
+  button.append(el('span', { className: 'label', textContent: title }));
   if (count) {
     const n = el('span', { className: 'n', textContent: count });
     // Amber so a running review shows from any tab.
@@ -387,6 +434,27 @@ function board(sections, state) {
     ...mineColumns(by.Mine ?? [], stale),
   );
   return wrap;
+}
+
+// Hero: the profile's tally in big type, a muted aside, and a capsule gauge with a flex-proportional segment per state that has PRs.
+const heroBox = document.getElementById('hero');
+function hero(group, title, aside, parts) {
+  const block = el('div', { className: 'hero' });
+  block.dataset.group = group;
+  const line = el('p');
+  line.append(el('strong', { textContent: title }), el('span', { textContent: aside }));
+  block.append(line);
+  const shown = parts.filter(([n]) => n > 0);
+  if (!shown.length) return block;
+  const gauge = el('div', { className: 'gauge', role: 'img', ariaLabel: shown.map(([n, label]) => `${n} ${label}`).join(', ') });
+  gauge.append(...shown.map(([n, , tone]) => {
+    const segment = el('span');
+    segment.style.flexGrow = n;
+    segment.dataset.tone = tone;
+    return segment;
+  }));
+  block.append(gauge);
+  return block;
 }
 
 // Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.
@@ -477,11 +545,20 @@ async function render() {
   tabsBar.replaceChildren(...columns.map((section) => tabButton(section.dataset.tab, prsIn(section), section.dataset.group)));
   const count = (tab) => prsIn(columns.find((section) => section.dataset.tab === tab) ?? el('section'));
   counts = { inbox: count('Inbox'), mine: count('Needs me') };
+  // Inbox: reviewed of everything in the pipeline (to review, running, reviewed); Mine: what needs me, then what waits on others.
+  const [toReview, running, reviewed] = ['Inbox', 'Running', 'Reviewed'].map(count);
+  const [needs, waiting, ready, drafts] = MINE_TABS.map(([, title]) => count(title));
+  const total = toReview + running + reviewed;
+  heroBox.replaceChildren(...(prs.length ? [
+    hero('inbox', total ? `${reviewed} of ${total} reviewed` : 'Nothing to review', running ? `${running} running` : '', [[reviewed, 'reviewed', 'green'], [running, 'running', 'amber'], [toReview, 'to review', 'dim']]),
+    hero('mine', needs ? `${needs} need${needs === 1 ? 's' : ''} me` : 'Nothing needs me', waiting ? `${waiting} waiting` : '', [[ready, 'ready', 'green'], [waiting, 'waiting', 'blue'], [needs, 'need me', 'red'], [drafts, 'in draft', 'dim']]),
+  ] : []));
   labelSwitch();
   if (!columns.some((section) => section.dataset.tab === openTab.inbox)) openTab.inbox = 'Inbox';
   if (!columns.some((section) => section.dataset.tab === openTab.mine)) openTab.mine = 'Needs me';
   markActive();
   applyFilter();
+  sendHeight();
 }
 
 // Right-click on a card: a small menu instead of the native one, the same in Arc and in Sidak's WKWebView.
@@ -495,9 +572,10 @@ function openMenu(event, pr) {
   menu.querySelector('[data-do="checks"]').href = `${pr.url}/checks`;
   menu.querySelector('[data-do="branch"]').disabled = !pr.branch;
   menu.showPopover();
-  // Just under the pointer: on macOS the menu opens on mousedown, and a mouseup outside it would light-dismiss it at once.
-  menu.style.left = `${Math.min(event.clientX - 2, innerWidth - menu.offsetWidth - 4)}px`;
-  menu.style.top = `${Math.min(event.clientY - 2, innerHeight - menu.offsetHeight - 4)}px`;
+  // Under the pointer, clear of the rounded corner (outside it for hit tests): on macOS the menu opens on mousedown,
+  // and a mouseup outside it would light-dismiss it at once.
+  menu.style.left = `${Math.min(event.clientX - 8, innerWidth - menu.offsetWidth - 4)}px`;
+  menu.style.top = `${Math.min(event.clientY - 8, innerHeight - menu.offsetHeight - 4)}px`;
   // Tab and Enter work from here; closing the popover hands focus back to the card.
   menu.querySelector('[data-do]').focus();
 }
@@ -536,16 +614,21 @@ refresh.onclick = () => {
 };
 // Keys: 1–9 switch spaces when there are any, else the current profile's tabs; Tab or ⌘← / ⌘→ switch Inbox / Mine; j/k move between cards,
 // d deep-reviews the focused card, s skims it; on my own card f fixes, n nudges, m merges, r marks it ready; o opens its cmux workspace,
-// Enter opens the PR (native link), x shows the stale fold, h snoozes the card for a day (again: unsnooze), R (shift) syncs.
+// Enter opens the PR (native link), x shows the stale fold, h snoozes the card for a day (again: unsnooze), R (shift) syncs, p pins the board (Sidak.app).
 document.addEventListener('keydown', (event) => {
   const editing = event.target.matches('input, select, textarea');
+  const help = document.getElementById('help');
+  // Esc folds the settings card away from anywhere but the search field, whose own Esc clears it.
+  if (event.key === 'Escape' && !settingsCard.hidden && event.target !== search && !help.open) {
+    toggleSettings(false);
+    return picksButton.focus();
+  }
   // ⌘← / ⌘→ pick a profile the way a swipe does: left the Inbox, right Mine.
   if (event.metaKey && !editing && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
     event.preventDefault();
     return setView(event.key === 'ArrowLeft' ? 'inbox' : 'mine');
   }
   if (event.metaKey || event.ctrlKey || event.altKey || editing) return;
-  const help = document.getElementById('help');
   if (event.key === '?') return help.open ? help.close() : help.showModal();
   if (event.key === '/') {
     event.preventDefault();
@@ -560,7 +643,7 @@ document.addEventListener('keydown', (event) => {
   // Visible rows without a layout read per row: the active tab's cards, or every column of the profile while searching or in the wide layout,
   // minus closed stale folds.
   const wide = matchMedia('(min-width: 760px)').matches || list.querySelector('.board[data-searching]');
-  const scope = wide ? `.column[data-group="${document.body.dataset.view}"]` : '.column.active';
+  const scope = wide ? `.column[data-group="${document.body.dataset.view}"]` : '.column:is(.active, .also)';
   const rows = [...list.querySelectorAll(`${scope} .pr:not([hidden])`)].filter((row) => !row.closest('details.stale:not([open])'));
   const index = rows.indexOf(document.activeElement);
   const actions = {
@@ -576,6 +659,7 @@ document.addEventListener('keydown', (event) => {
     x: () => list.querySelector('.column.active details.stale')?.toggleAttribute('open'),
     h: () => toggleSnooze(rows[index]?.dataset.key),
     R: () => refresh.click(),
+    p: () => pinButton.click(),
     Tab: () => setView(document.body.dataset.view === 'mine' ? 'inbox' : 'mine'),
   };
   if (actions[event.key]) {
@@ -596,14 +680,14 @@ function showMe() {
   me.replaceChildren(config.login.slice(0, 1).toUpperCase(), img);
 }
 showMe();
-// The badge on the switch counts the current profile's work: Inbox to review, or Needs me; none at 0.
+// A red dot on the inbox tray while my own PRs need me (Needs me has rows); the tooltip counts the other profile's work.
 const viewCount = document.getElementById('view-count');
 let counts = { inbox: 0, mine: 0 };
 function labelSwitch() {
-  const [view, other, name] = document.body.dataset.view === 'mine' ? ['mine', 'inbox', 'Inbox'] : ['inbox', 'mine', 'Mine'];
+  const [other, name] = document.body.dataset.view === 'mine' ? ['inbox', 'Inbox'] : ['mine', 'Mine'];
   profileSwitch.title = `Switch to ${name} (${counts[other]}) · Tab`;
-  profileSwitch.setAttribute('aria-label', `Switch to ${name}`);
-  viewCount.textContent = counts[view] || '';
+  viewCount.hidden = !(other === 'mine' && counts.mine > 0);
+  profileSwitch.setAttribute('aria-label', `Switch to ${name}${viewCount.hidden ? '' : `, ${counts.mine} need${counts.mine === 1 ? 's' : ''} you`}`);
 }
 function setView(view) {
   if (view !== 'inbox' && view !== 'mine') return;
@@ -611,11 +695,23 @@ function setView(view) {
   // The URL carries the profile, so #inbox / #mine deep-link and the app's hash handling stays in step.
   if (location.hash.slice(1) !== view) history.replaceState(null, '', `#${view}`);
   document.body.dataset.view = view;
-  search.placeholder = view === 'mine' ? 'Search my pull requests' : 'Search title, #number or author';
+  search.placeholder = view === 'mine' ? 'Search my pull requests…' : 'Search title, #number or author…';
   labelSwitch();
   markActive();
 }
 profileSwitch.onclick = () => setView(document.body.dataset.view === 'mine' ? 'inbox' : 'mine');
+// Pin (Sidak.app only): asks the app to float the board as a window (sidakpin://1) or put it back in the popover (sidakpin://0).
+// The app owns the state, it sets data-pinned after each change (dragging the board off or closing it changes it too),
+// so the button shows that attribute rather than its own clicks.
+const pinButton = document.getElementById('pin');
+const showPin = () => pinButton.setAttribute('aria-pressed', document.documentElement.dataset.pinned === '1');
+pinButton.onclick = () => {
+  if (!document.documentElement.dataset.app) return;
+  const pinned = document.documentElement.dataset.pinned === '1';
+  chrome.runtime.sendNativeMessage('com.sidak.host', { url: `sidakpin://${pinned ? 0 : 1}` }, () => {});
+};
+new MutationObserver(showPin).observe(document.documentElement, { attributes: true, attributeFilter: ['data-pinned'] });
+showPin();
 setView(saved('view', 'inbox'));
 setView(location.hash.slice(1));
 addEventListener('hashchange', () => setView(location.hash.slice(1)));
@@ -632,6 +728,26 @@ addEventListener('wheel', ({ deltaX, deltaY }) => {
   swiped = true;
   setView(swipe > 0 ? 'inbox' : 'mine');
 }, { passive: true });
+// Sidak.app sizes its popover to the page: after a render or any size change the height goes through the bridge, 50 ms after the last.
+// Only there (shim.js sets data-app); Arc never sends it.
+let heightTimer;
+function sendHeight() {
+  if (!document.documentElement.dataset.app) return;
+  clearTimeout(heightTimer);
+  heightTimer = setTimeout(() => chrome.runtime.sendNativeMessage('com.sidak.host', { url: `sidakheight://${Math.ceil(document.body.scrollHeight)}` }, () => {}), 50);
+}
+// The header and footer turn to toolbar glass while the list runs under them.
+function edges() {
+  const root = document.documentElement;
+  root.toggleAttribute('data-scrolled', scrollY > 0);
+  root.toggleAttribute('data-more', scrollY + innerHeight < root.scrollHeight - 1);
+}
+addEventListener('scroll', edges, { passive: true });
+addEventListener('resize', edges);
+new ResizeObserver(() => {
+  edges();
+  sendHeight();
+}).observe(document.body);
 render();
 // Skip our own sync request, so the spinner keeps going until the sync result lands.
 chrome.storage.onChanged.addListener((changes) => !changes.syncRequest && rerender());

@@ -1,6 +1,8 @@
 // chrome.* shim for the Sidak menu-bar app (WKWebView). Only what panel.js, pr.js and background.js use.
 // Injected at document start, before pr.js/panel.js; background.js is injected at document end.
 (() => {
+  // Marks the page as the app's: panel.html goes transparent over the app's own glass and panel.js reports its height (sidakheight://).
+  document.documentElement.dataset.app = '1';
   const changed = new Set();
   const local = {
     async get(keys) {
