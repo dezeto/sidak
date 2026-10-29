@@ -16,12 +16,11 @@
     --amber: #9a6700;
     --grey: #59636e;
     --gold: #bf8700;
-    /* Row dots and the hero gauge: amber to review, blue running or waiting, green reviewed or ready, red needs me. */
+    /* Row dots: amber to review, blue running or waiting, green reviewed or ready, red needs me. */
     --dot-amber: #f5b400;
     --dot-blue: #5b8def;
     --dot-green: #1f9a48;
     --dot-red: #e0443e;
-    --dot-dim: rgba(0, 0, 0, 0.1);
     scrollbar-width: thin;
     scrollbar-color: var(--lg-border-subtle) transparent;
   }
@@ -33,7 +32,6 @@
       --grey: #9198a1;
       --gold: #e3b341;
       --dot-green: #2bb45a;
-      --dot-dim: rgba(255, 255, 255, 0.14);
       --row-hover: rgba(255, 255, 255, 0.06);
     }
   }
@@ -56,11 +54,8 @@
   .icon { width: 16px; height: 16px; flex: none; }
   /* Glass: a tinted capsule with a lit 1 px edge, worn by the header controls and the row buttons. */
   .glass, .review { border: 1px solid var(--lg-border-color); background: var(--lg-bg-interactive); box-shadow: var(--lg-highlight); }
-  .glass, .review, #tabs button, .seg button {
-    transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast), transform var(--lg-duration-normal) var(--lg-easing-spring);
-  }
+  .glass, .review, #tabs button, .seg button { transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast); }
   :is(button.glass, .review, .search):hover { background: var(--hover); }
-  :is(button.glass, .review):active { transform: scale(0.96); }
 
   /* Header: one line of glass controls. It and the footer turn to toolbar glass while the list runs under them (panel.js edges). */
   header, #foot { transition: background-color var(--lg-duration-normal), box-shadow var(--lg-duration-normal); }
@@ -126,13 +121,12 @@
   #tabs .n[data-live] { color: var(--amber); }
   @media (prefers-contrast: more) { :is(#tabs, .seg) button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px CanvasText; } }
 
-  /* Settings: a glass card that unfolds under the header, one line per setting; it stands in for the hero while open. */
+  /* Settings: a glass card that unfolds under the header, one line per setting. Its fold clips it while panel.js animates the height. */
   #settings {
     margin: 0 14px; padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
-    box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 0; animation: unfold var(--lg-duration-normal) var(--lg-easing-spring);
+    box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 0;
   }
-  @keyframes unfold { from { opacity: 0; transform: translateY(-8px) scale(0.98); } }
-  body[data-settings] #hero, #hero:empty { display: none; }
+  #settings-fold.folding { overflow: hidden; }
   .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
   .set > .l { font-size: 12.5px; font-weight: 500; }
   .seg { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: var(--lg-bg-interactive); }
@@ -151,20 +145,6 @@
   .chip button::after { content: ''; position: absolute; inset: -5px; } /* a 28 px hit target around the 18 px × */
   #vip { flex: 1; min-width: 100px; height: 28px; padding: 0 6px; border: 0; border-radius: 8px; background: none; color: var(--lg-ink); font: inherit; font-size: 11.5px; }
   #vip::placeholder { color: var(--lg-ink-muted); }
-
-  /* Hero: the profile's tally in big type over a capsule gauge, one flex-proportional segment per state with PRs. */
-  #hero { padding: 2px 20px; }
-  .hero p { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 0 0 8px; }
-  .hero strong { font-size: 22px; font-weight: 600; line-height: 26px; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; }
-  .hero p span { font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
-  .gauge { display: flex; gap: 3px; height: 10px; }
-  .gauge span { flex: 1 1 0; min-width: 6px; border-radius: 5px; background: var(--tone); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35); }
-  .gauge [data-tone='green'] { --tone: linear-gradient(#2bb45a, #1f9a48); }
-  .gauge [data-tone='amber'] { --tone: linear-gradient(#ffc43d, #f5b400); }
-  .gauge [data-tone='blue'] { --tone: linear-gradient(#7ba6f5, #5b8def); }
-  .gauge [data-tone='red'] { --tone: linear-gradient(#ee6a64, #e0443e); }
-  .gauge [data-tone='dim'] { --tone: var(--dot-dim); box-shadow: none; }
-  body[data-view='mine'] #hero { display: none; }
 
   @media (max-width: 759px) {
     /* One list at a time: the current profile's open tab (panel.js marks it .active), and under Inbox the Running list (.also) when it has rows. */
@@ -211,7 +191,7 @@
   summary::-webkit-details-marker { display: none; }
   summary::before {
     content: ''; width: 5px; height: 5px; flex: none; margin: 0 2px 0 1px;
-    border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform var(--lg-duration-normal) var(--lg-easing-spring);
+    border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg);
   }
   details[open] > summary::before { transform: rotate(45deg) translate(-1px, -1px); }
   summary:hover, .link:hover { background: var(--lg-bg-interactive); }
@@ -258,7 +238,7 @@
   .pr:is(:hover, :focus-within) { background: var(--row-hover); }
   .pr:focus-visible { outline-offset: -2px; }
   .pr > .icon { display: none; }
-  /* Status dot: amber to review, blue running (it breathes), green reviewed, red failed; on my own PRs by what each needs next. */
+  /* Status dot: amber to review, blue running, green reviewed, red failed; on my own PRs by what each needs next. */
   .pr::before {
     content: ''; grid-row: 1 / span 2; grid-column: 1; width: 8px; height: 8px; border-radius: 50%;
     background: var(--status); box-shadow: 0 0 0 3px color-mix(in srgb, var(--status) 16%, transparent);
@@ -268,8 +248,6 @@
   .pr[data-claude='reviewed'], .pr[data-group='ready'] { --status: var(--dot-green); }
   .pr[data-claude='failed'], .pr[data-group='needs'] { --status: var(--dot-red); }
   .pr[data-group='draft'] { --status: var(--grey); }
-  .pr[data-claude='running']::before { animation: breathe 1.6s ease-in-out infinite; }
-  @keyframes breathe { 50% { opacity: 0.45; } }
   .title, .meta { grid-column: 2; margin: 0 10px 0 12px; }
   .title { grid-row: 1; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* Author profile: a pill right after the title when it says more than the tab (the blocker, who is awaited). */
@@ -325,7 +303,7 @@
   [data-state='DRAFT'] { --state: var(--grey); }
   .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
 
-  /* Footer: what a click runs and the list settings as plain words (each opens the settings card), the sync status and its button, the hotkey. */
+  /* Footer: what a click runs and the list settings as plain words (each opens the settings card), then the sync status and its button. */
   #foot {
     position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 12px 20px 14px;
     font-size: 11px; font-weight: 500; line-height: 14px; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
@@ -337,8 +315,44 @@
   #status[data-error='true'] { color: var(--red); }
   #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
   #refresh .icon { width: 13px; height: 13px; }
+
+  /* Motion: Liquid Glass springs that answer the user's own actions and never idle, all under no-preference. panel.js play() checks
+     the same query for the scripted parts: the settings fold, the list fade on a tab switch, rows a sync brings in, the profile flip,
+     the pin's bounce and the stale rows. */
+  @media (prefers-reduced-motion: no-preference) {
+    .glass, .review { transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast), transform var(--lg-duration-normal) var(--lg-easing-spring); }
+    :is(button.glass, .review):active { transform: scale(0.96); }
+    summary::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring); }
+    /* Tabs: one glass lozenge under the open tab glides to the next. The tabs are equal width, so panel.js markActive places it
+       with an index (--i) of a count (--n), no measuring; it glides only on a tab pick (data-glide="move"), not on a render. */
+    #tabs { position: relative; }
+    #tabs button { position: relative; }
+    #tabs button[aria-pressed='true'] { background: none; box-shadow: none; }
+    #tabs::before {
+      content: ''; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px - (var(--n, 1) - 1) * 2px) / var(--n, 1));
+      border-radius: 14px; background: var(--lg-bg-pressed); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12);
+      transform: translateX(calc(var(--i, 0) * (100% + 2px)));
+    }
+    #tabs[data-glide='move']::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring); }
+    @media (prefers-contrast: more) { #tabs::before { box-shadow: inset 0 0 0 1px CanvasText; } }
+    /* Skim / Deep (and Fix, Nudge, Merge) fade and grow in from 0.92 on hover or focus, 30 ms apart. */
+    .pr:is(:hover, :focus-within) .actions > .review { animation: cap-in var(--lg-duration-normal) var(--lg-easing-spring) backwards; }
+    .pr:is(:hover, :focus-within) .actions > .review:nth-child(2) { animation-delay: 30ms; }
+    .pr:is(:hover, :focus-within) .actions > .review:nth-child(3) { animation-delay: 60ms; }
+    @keyframes cap-in { from { opacity: 0; transform: scale(0.92); } }
+    /* Profile switch: flips on a profile change (panel.js setView); its back face stays hidden, so the new face turns in. */
+    #view { backface-visibility: hidden; }
+    /* Stale fold: the rows' height opens with the spring where the browser can interpolate to auto (panel.js also lifts the rows in). */
+    @supports (interpolate-size: allow-keywords) {
+      details.stale { interpolate-size: allow-keywords; }
+      details.stale::details-content {
+        height: 0; overflow: clip;
+        transition: height var(--lg-duration-normal) var(--lg-easing-spring), content-visibility var(--lg-duration-normal) allow-discrete;
+      }
+      details.stale[open]::details-content { height: auto; }
+    }
+  }
   #refresh:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
-  .hotkey { flex: none; }
 </style>
 <svg width="0" height="0" style="position: absolute" aria-hidden="true">
   <symbol id="i-pr" viewBox="0 0 16 16">
@@ -389,7 +403,7 @@
   <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
   <nav id="spaces" aria-label="Spaces"></nav>
 </header>
-<section id="settings" aria-label="Settings" hidden>
+<div id="settings-fold" hidden><section id="settings" aria-label="Settings">
   <div class="set">
     <span class="l">Model</span>
     <div class="seg" data-key="model" role="group" aria-label="Model for new reviews">
@@ -428,10 +442,9 @@
     <label class="l" for="vip">VIP authors</label>
     <div class="chips"><span id="vip-list"></span><input id="vip" name="vip" type="text" spellcheck="false" autocomplete="off" placeholder="login or email…" /></div>
   </div>
-</section>
-<section id="hero"></section>
+</section></div>
 <main id="list"></main>
-<footer id="foot"><span id="foot-config"></span><span id="status"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button><span class="hotkey" title="Opens this panel from anywhere while Sidak.app runs">⌃⌥P</span></footer>
+<footer id="foot"><span id="foot-config"></span><span id="status"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>
   <button type="button" data-do="branch">Copy branch</button>
@@ -467,7 +480,7 @@
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle class="low" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="15 100" /></svg></td><td>Red: under a fifth done, the pile is growing</td></tr>
     <tr><td><b>A</b></td><td>Auto review is on (settings, amber dot): while Sidak.app runs, the next Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest; one at a time, at most 10 a day</td></tr>
   </table>
-  <p>The number beside the ring is how many still wait for you. <kbd>⌃⌥P</kbd> opens this panel from anywhere; drag it off the menu bar to keep it as a window. A notification tells you when a review lands; click it to open the PR.</p>
+  <p>The number in the menu-bar pill is how many still wait for you; while a review runs the pill shows its PR and elapsed time. <kbd>⌃⌥P</kbd> opens this panel from anywhere, and <kbd>p</kbd> pins it as a floating window you can drag by its top edge.</p>
 </dialog>
 <template id="pr">
   <a class="pr" target="_blank">

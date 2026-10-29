@@ -58,18 +58,44 @@ const relative = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
 const saved = (key, fallback) => JSON.parse(localStorage.getItem(key)) ?? fallback;
 const save = (key, value) => localStorage.setItem(key, JSON.stringify(value));
 const el = (tag, props) => Object.assign(document.createElement(tag), props);
+// Motion: the scripted springs, skipped unless motion is welcome (panel.html gates the CSS ones the same way). Durations and the
+// spring come from lg.css (--lg-duration-*, --lg-easing-spring); nothing runs longer than 400 ms and only on the user's own actions.
+const motion = matchMedia('(prefers-reduced-motion: no-preference)');
+const token = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const spring = () => ({ duration: parseFloat(token('--lg-duration-normal')) || 0, easing: token('--lg-easing-spring') || 'ease-out' });
+const play = (node, frames, options) => (motion.matches ? node.animate(frames, { ...spring(), ...options }) : null);
+// Rows rise 6 px into place, 20 ms apart, at most 8.
+const RISE = [{ opacity: 0, transform: 'translateY(6px)' }, {}];
+const rise = (rows) => rows.slice(0, 8).forEach((row, i) => play(row, RISE, { delay: i * 20, fill: 'backwards' }));
 let activeSpace = saved('space', null);
 // Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
 const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
 // The pickers sit in the settings card; the sliders button's tooltip names the current picks.
 const picksButton = document.getElementById('picks');
-// Settings: the sliders button unfolds a card under the header (it stands in for the hero) and folds it again; Esc folds it too.
+// Settings: the sliders button unfolds a card under the header and folds it again; Esc folds it too. The fold's height springs
+// between 0 and the card's, so the list below moves with it rather than jumping, while the card fades and grows from 0.98 at its top;
+// a second press mid-way turns it around from where it is.
 const settingsCard = document.getElementById('settings');
-function toggleSettings(open = settingsCard.hidden) {
-  settingsCard.hidden = !open;
+const settingsFold = document.getElementById('settings-fold');
+let folding = null;
+function toggleSettings(open = settingsFold.hidden) {
+  if (!folding && settingsFold.hidden === !open) return open && scrollTo(0, 0);
   picksButton.setAttribute('aria-expanded', open);
-  document.body.toggleAttribute('data-settings', open);
+  const from = folding ? settingsFold.offsetHeight : open ? 0 : settingsCard.offsetHeight;
+  folding?.cancel();
+  settingsFold.hidden = false;
   if (open) scrollTo(0, 0);
+  if (!motion.matches) return void (settingsFold.hidden = !open);
+  // Sidak.app grows its popover to the open height now, not after the spring.
+  if (open) sendHeight(document.body.scrollHeight);
+  settingsFold.classList.add('folding');
+  folding = play(settingsFold, [{ height: `${from}px` }, { height: `${open ? settingsCard.offsetHeight : 0}px` }]);
+  play(settingsCard, open ? [{ opacity: 0, transform: 'scale(0.98)' }, {}] : [{}, { opacity: 0, transform: 'scale(0.98)' }]);
+  folding.onfinish = () => {
+    folding = null;
+    settingsFold.classList.remove('folding');
+    settingsFold.hidden = !open;
+  };
 }
 picksButton.onclick = () => toggleSettings();
 for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
@@ -361,8 +387,11 @@ function column(title, iconId, prs, group = 'inbox', stale = []) {
   return section;
 }
 
+// Opening the fold (a click, x, or a search that matches inside it) lifts its rows in; a render that reopens it for a query does not.
+let renderedAt = 0;
 function staleFold(prs) {
   const details = el('details', { className: 'stale' });
+  details.ontoggle = () => details.open && performance.now() - renderedAt > 100 && rise([...details.querySelectorAll(':scope > .pr:not([hidden])')]);
   const summary = el('summary');
   summary.append(el('span', { className: 'count', textContent: `Stale ${prs.length}` }));
   details.append(summary, ...prs.map(prRow));
@@ -372,19 +401,27 @@ function staleFold(prs) {
 // Each profile keeps its own open tab: Inbox / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
 const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'Needs me') };
 function showTab(title, group) {
+  const moved = openTab[group] !== title;
   openTab[group] = title;
   save(group === 'mine' ? 'mineTab' : 'tab', title);
-  markActive();
+  markActive(moved);
+  // The lists cross-fade: the one now shown fades in over the fast duration.
+  if (moved) for (const section of list.querySelectorAll('.column:is(.active, .also)')) play(section, [{ opacity: 0 }, {}], { duration: parseFloat(token('--lg-duration-fast')), easing: 'ease-out' });
 }
 // The active list is the current profile's open tab: its button pressed, its column the one the popup shows.
 // The Inbox tab also lists what is running (.also), as a second section.
-function markActive() {
+// The glass lozenge (#tabs::before) sits under the open tab by its index among the current profile's tabs; it glides on a pick only.
+function markActive(glide = false) {
   for (const button of tabsBar.children) button.setAttribute('aria-pressed', button.value === openTab[button.dataset.group]);
   const tab = openTab[document.body.dataset.view];
   for (const section of list.querySelectorAll('.column')) {
     section.classList.toggle('active', section.dataset.tab === tab);
     section.classList.toggle('also', tab === 'Inbox' && section.dataset.tab === 'Running');
   }
+  const shown = [...tabsBar.children].filter((button) => button.dataset.group === document.body.dataset.view);
+  tabsBar.style.setProperty('--n', shown.length || 1);
+  tabsBar.style.setProperty('--i', Math.max(shown.findIndex((button) => button.value === tab), 0));
+  tabsBar.dataset.glide = glide ? 'move' : 'still';
 }
 
 // Both profiles' tabs sit in the bar; the CSS shows the current profile's.
@@ -434,27 +471,6 @@ function board(sections, state) {
     ...mineColumns(by.Mine ?? [], stale),
   );
   return wrap;
-}
-
-// Hero: the profile's tally in big type, a muted aside, and a capsule gauge with a flex-proportional segment per state that has PRs.
-const heroBox = document.getElementById('hero');
-function hero(group, title, aside, parts) {
-  const block = el('div', { className: 'hero' });
-  block.dataset.group = group;
-  const line = el('p');
-  line.append(el('strong', { textContent: title }), el('span', { textContent: aside }));
-  block.append(line);
-  const shown = parts.filter(([n]) => n > 0);
-  if (!shown.length) return block;
-  const gauge = el('div', { className: 'gauge', role: 'img', ariaLabel: shown.map(([n, label]) => `${n} ${label}`).join(', ') });
-  gauge.append(...shown.map(([n, , tone]) => {
-    const segment = el('span');
-    segment.style.flexGrow = n;
-    segment.dataset.tone = tone;
-    return segment;
-  }));
-  block.append(gauge);
-  return block;
 }
 
 // Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.
@@ -545,19 +561,28 @@ async function render() {
   tabsBar.replaceChildren(...columns.map((section) => tabButton(section.dataset.tab, prsIn(section), section.dataset.group)));
   const count = (tab) => prsIn(columns.find((section) => section.dataset.tab === tab) ?? el('section'));
   counts = { inbox: count('Inbox'), mine: count('Needs me') };
-  // Inbox: reviewed of everything in the pipeline (to review, running, reviewed); Mine: what needs me, then what waits on others.
-  const [toReview, running, reviewed] = ['Inbox', 'Running', 'Reviewed'].map(count);
-  const [needs, waiting, ready, drafts] = MINE_TABS.map(([, title]) => count(title));
-  const total = toReview + running + reviewed;
-  heroBox.replaceChildren(...(prs.length ? [
-    hero('inbox', total ? `${reviewed} of ${total} reviewed` : 'Nothing to review', running ? `${running} running` : '', [[reviewed, 'reviewed', 'green'], [running, 'running', 'amber'], [toReview, 'to review', 'dim']]),
-  ] : []));
   labelSwitch();
   if (!columns.some((section) => section.dataset.tab === openTab.inbox)) openTab.inbox = 'Inbox';
   if (!columns.some((section) => section.dataset.tab === openTab.mine)) openTab.mine = 'Needs me';
   markActive();
   applyFilter();
+  riseNewRows();
+  renderedAt = performance.now();
   sendHeight();
+}
+
+// A render that lands a row under a still pointer shows its buttons without the pop: the pop answers a hover, not a sync.
+list.addEventListener('animationstart', (event) => {
+  if (event.animationName === 'cap-in' && performance.now() - renderedAt < 300) for (const run of event.target.parentElement.getAnimations({ subtree: true })) run.finish();
+});
+// Rows a sync brings into a list (keyed by list and PR) rise into place; the first paint, and rows that only moved, stay still.
+let seenRows = null;
+function riseNewRows() {
+  const rows = [...list.querySelectorAll('.column .pr')];
+  const key = (row) => `${row.closest('.column').dataset.tab}|${row.dataset.key}`;
+  const fresh = seenRows ? rows.filter((row) => !seenRows.has(key(row)) && row.offsetParent) : [];
+  seenRows = new Set(rows.map(key));
+  rise(fresh);
 }
 
 // Right-click on a card: a small menu instead of the native one, the same in Arc and in Sidak's WKWebView.
@@ -618,7 +643,7 @@ document.addEventListener('keydown', (event) => {
   const editing = event.target.matches('input, select, textarea');
   const help = document.getElementById('help');
   // Esc folds the settings card away from anywhere but the search field, whose own Esc clears it.
-  if (event.key === 'Escape' && !settingsCard.hidden && event.target !== search && !help.open) {
+  if (event.key === 'Escape' && !settingsFold.hidden && event.target !== search && !help.open) {
     toggleSettings(false);
     return picksButton.focus();
   }
@@ -688,8 +713,11 @@ function labelSwitch() {
   viewCount.hidden = !(other === 'mine' && counts.mine > 0);
   profileSwitch.setAttribute('aria-label', `Switch to ${name}${viewCount.hidden ? '' : `, ${counts.mine} need${counts.mine === 1 ? 's' : ''} you`}`);
 }
+let booted = false;
 function setView(view) {
   if (view !== 'inbox' && view !== 'mine') return;
+  // The switch flips a half turn on a profile change (not on load), the new face turning in.
+  if (booted && document.body.dataset.view !== view) play(profileSwitch, [{ transform: 'perspective(240px) rotateY(180deg)' }, { transform: 'perspective(240px) rotateY(0deg)' }]);
   save('view', view);
   // The URL carries the profile, so #inbox / #mine deep-link and the app's hash handling stays in step.
   if (location.hash.slice(1) !== view) history.replaceState(null, '', `#${view}`);
@@ -703,7 +731,14 @@ profileSwitch.onclick = () => setView(document.body.dataset.view === 'mine' ? 'i
 // The app owns the state, it sets data-pinned after each change (dragging the board off or closing it changes it too),
 // so the button shows that attribute rather than its own clicks.
 const pinButton = document.getElementById('pin');
-const showPin = () => pinButton.setAttribute('aria-pressed', document.documentElement.dataset.pinned === '1');
+// Turning pinned, the button gives a short bounce (the spring's overshoot from 0.8).
+let pinShown = null;
+function showPin() {
+  const pinned = document.documentElement.dataset.pinned === '1';
+  pinButton.setAttribute('aria-pressed', pinned);
+  if (pinned && pinShown === false) play(pinButton, [{ transform: 'scale(0.8)' }, {}]);
+  pinShown = pinned;
+}
 pinButton.onclick = () => {
   if (!document.documentElement.dataset.app) return;
   const pinned = document.documentElement.dataset.pinned === '1';
@@ -713,6 +748,7 @@ new MutationObserver(showPin).observe(document.documentElement, { attributes: tr
 showPin();
 setView(saved('view', 'inbox'));
 setView(location.hash.slice(1));
+booted = true;
 addEventListener('hashchange', () => setView(location.hash.slice(1)));
 // Two-finger swipe, by direction like ⌘← / ⌘→: a swipe left (deltaX > 0 with natural scrolling) lands on the Inbox (reviewer),
 // a swipe right on Mine (author). One switch per gesture, so 400 ms of quiet re-arms it.
@@ -729,11 +765,14 @@ addEventListener('wheel', ({ deltaX, deltaY }) => {
 }, { passive: true });
 // Sidak.app sizes its popover to the page: after a render or any size change the height goes through the bridge, 50 ms after the last.
 // Only there (shim.js sets data-app); Arc never sends it.
+// An explicit height (the settings card about to unfold) goes at once.
 let heightTimer;
-function sendHeight() {
+function sendHeight(height) {
   if (!document.documentElement.dataset.app) return;
   clearTimeout(heightTimer);
-  heightTimer = setTimeout(() => chrome.runtime.sendNativeMessage('com.sidak.host', { url: `sidakheight://${Math.ceil(document.body.scrollHeight)}` }, () => {}), 50);
+  const send = (px) => chrome.runtime.sendNativeMessage('com.sidak.host', { url: `sidakheight://${Math.ceil(px)}` }, () => {});
+  if (height) return send(height);
+  heightTimer = setTimeout(() => send(document.body.scrollHeight), 50);
 }
 // The header and footer turn to toolbar glass while the list runs under them.
 function edges() {
