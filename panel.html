@@ -85,15 +85,11 @@
   :root[data-pinned='1'] header { padding-top: 28px; }
   :root[data-pinned='1'] header::before { content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--lg-ink-muted); pointer-events: none; }
   #picks[data-auto]::after { content: ''; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-amber); box-shadow: 0 0 0 1.5px Canvas; }
-  /* Search: a round glass button that unfolds into a capsule field on a click or /, and folds back once it is empty and loses focus.
-     While open it takes the tabs' place. */
-  .search { cursor: pointer; }
+  /* Search: a full-width capsule field between the profile switch and the buttons. */
+  .search { flex: 1; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
   .search .icon { width: 15px; height: 15px; }
-  #search { width: 0; min-width: 0; padding: 0; border: 0; background: none; color: var(--lg-ink); font: inherit; font-size: 12.5px; outline: none; }
-  .search:focus-within, .search:has(#search:not(:placeholder-shown)) { flex: 1; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
-  .search:focus-within #search, #search:not(:placeholder-shown) { flex: 1; }
+  #search { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--lg-ink); font: inherit; font-size: 12.5px; outline: none; }
   .search:has(#search:focus-visible) { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }
-  .find:has(.search:focus-within, #search:not(:placeholder-shown)) #tabs { display: none; }
   #search::placeholder { color: var(--lg-ink-muted); }
   #search::-webkit-search-cancel-button { -webkit-appearance: none; }
   .pr[hidden] { display: none; }
@@ -117,17 +113,13 @@
   /* The tab bar holds both profiles' tabs and shows the current one's. Nothing to switch without a board. */
   body[data-view='mine'] #tabs [data-group='inbox'], body:not([data-view='mine']) #tabs [data-group='mine'], body:not(:has(.board)) .switch { display: none; }
   /* Tabs: one glass segmented capsule centred between the switch and search; the lit lozenge is the open tab. */
-  #tabs { display: flex; flex: 0 1 auto; gap: 2px; min-width: 0; margin: 0 auto; padding: 2px; border-radius: 17px; }
+  #tabs { display: flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: 17px; }
   #tabs:empty { display: none; }
-  #tabs:empty + .search { margin-left: auto; }
-  #tabs button { display: flex; align-items: center; gap: 5px; min-width: 0; height: 28px; padding: 0 11px; overflow: hidden; border-radius: 14px; font-size: 12px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
+  #tabs button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 28px; padding: 0 8px; border-radius: 14px; font-size: 12px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
   /* Four tabs on my own PRs: tighter, so two-digit counts still fit; past that a label ellipsizes. In Sidak.app the Pin button
      takes a slot too, so there the round buttons are 28 px and my tabs a size smaller. */
-  body[data-view='mine'] #tabs button { padding: 0 6px; }
   #tabs .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   :root[data-app] :is(#view, #picks, #pin, .search) { width: 28px; height: 28px; }
-  :root[data-app] body[data-view='mine'] #tabs { gap: 1px; }
-  :root[data-app] body[data-view='mine'] #tabs button { padding: 0 5px; font-size: 11.5px; }
   :is(#tabs, .seg) button:hover { color: var(--lg-ink); }
   :is(#tabs, .seg) button[aria-pressed='true'], .space[aria-pressed='true'] { background: var(--lg-bg-pressed); color: var(--lg-ink); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); }
   .n { font-variant-numeric: tabular-nums; color: var(--lg-ink-muted); }
@@ -387,7 +379,6 @@
   <h1 id="space-title">Pull requests</h1>
   <div class="find">
     <span class="switch"><button id="view" class="glass" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true"></span></button><span id="view-count" aria-hidden="true" hidden></span></span>
-    <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
     <label class="search glass" title="Search (/)">
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
@@ -395,6 +386,7 @@
     <button id="picks" class="glass" type="button" aria-expanded="false" aria-controls="settings" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg></button>
     <button id="pin" class="glass" type="button" aria-pressed="false" aria-label="Keep the board floating" title="Keep the board floating (p)"><svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg></button>
   </div>
+  <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
   <nav id="spaces" aria-label="Spaces"></nav>
 </header>
 <section id="settings" aria-label="Settings" hidden>
