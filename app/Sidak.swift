@@ -19,7 +19,8 @@ func installHotKey(_ app: App) {
   NSLog("hot key ⌃⌥P: %d", status)
 }
 
-let dir = URL(fileURLWithPath: NSString(string: "~/Documents/_git/arc-live-folders").expandingTildeInPath)
+// The repo folder (the one above app/): build.sh writes it into Info.plist. Scripts run from there, as bin/<name>.
+let dir = URL(fileURLWithPath: Bundle.main.object(forInfoDictionaryKey: "SidakDir") as! String)
 
 final class Files: NSObject, WKURLSchemeHandler {
   let types = ["html": "text/html", "js": "text/javascript", "json": "application/json", "txt": "text/plain",
@@ -158,7 +159,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     var settled = false
     for (key, state) in states where state != last[key] && (state == "reviewed" || state == "failed") {
       settled = true
-      // key: Collabocode/crm#123
+      // key: owner/repo#123
       let parts = key.split(separator: "#")
       guard parts.count == 2 else { continue }
       let content = UNMutableNotificationContent()
@@ -200,6 +201,7 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/zsh")
     p.arguments = ["-c", command]
+    p.currentDirectoryURL = dir
     let out = Pipe()
     p.standardOutput = out
     p.standardError = FileHandle.nullDevice
@@ -213,14 +215,14 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
   // Then one auto-review tick (`pr-board auto`); while auto mode is on the title reads "A <to review>", since its runs spend money.
   func counts() {
     DispatchQueue.global().async {
-      let (text, status) = self.zsh("~/bin/pr-board board")
+      let (text, status) = self.zsh("bin/pr-board board")
       var section = "", toReview = 0, running = 0, reviewed = 0
       for line in text.split(separator: "\n") {
         if !line.hasPrefix("  ") { section = String(line); continue }
         if section == "To review" { toReview += 1 } else if section == "Running" { running += 1 } else if section == "Reviewed" { reviewed += 1 }
       }
       NSLog("counts: to review %d, running %d, reviewed %d", toReview, running, reviewed)
-      let auto = self.zsh("~/bin/pr-board auto").0.split(separator: "\n").first.map(String.init) ?? ""
+      let auto = self.zsh("bin/pr-board auto").0.split(separator: "\n").first.map(String.init) ?? ""
       NSLog("auto: %@", auto)
       let autoOn = auto.hasPrefix("auto on")
       let title = status == 0 ? " \(toReview)" : ""
@@ -249,7 +251,8 @@ final class App: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotif
       DispatchQueue.global().async {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-c", "CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) ~/bin/claude-review-open \"$1\" && { [ -n \"$2\" ] || osascript -e 'tell application \"cmux\" to activate'; }", "_", url, inPlace ? "1" : ""]
+        p.currentDirectoryURL = dir
+        p.arguments = ["-c", "CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) bin/claude-review-open \"$1\" && { [ -n \"$2\" ] || osascript -e 'tell application \"cmux\" to activate'; }", "_", url, inPlace ? "1" : ""]
         let out = Pipe()
         p.standardOutput = out
         p.standardError = out

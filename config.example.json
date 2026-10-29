@@ -1,0 +1,10 @@
+{
+  "org": "your-github-org",
+  "login": "your-github-login",
+  "repos": "~/Documents/_git/cc",
+  "reviewable": ["crm"],
+  "rulesRepo": "crm",
+  "profiles": { "cwc": "~/.claude-work", "cc": "" },
+  "defaultProfile": "cwc",
+  "extensionId": "hhadoomaacnjndipggfimpalhoajadcc"
+}

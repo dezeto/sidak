@@ -284,7 +284,7 @@
 <header>
   <h1 id="space-title">Pull requests</h1>
   <div class="find">
-    <span class="switch"><button id="view" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true">A</span></button><span id="view-count" aria-hidden="true"></span></span>
+    <span class="switch"><button id="view" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true"></span></button><span id="view-count" aria-hidden="true"></span></span>
     <label class="search">
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
@@ -302,9 +302,7 @@
         <button type="button" value="medium">Med</button><button type="button" value="high">High</button>
       </div>
       <p>Claude profile</p>
-      <div class="seg" data-setting="profile" role="group" aria-label="Claude profile for new reviews" title="cwc: the work account (~/.claude-work), cc: the personal one">
-        <button type="button" value="cwc">cwc</button><button type="button" value="cc">cc</button>
-      </div>
+      <div class="seg" data-setting="profile" role="group" aria-label="Claude profile for new reviews" title="Reviews run with the profile's CLAUDE_CONFIG_DIR from config.json"></div>
       <p>Auto review (quick)</p>
       <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of the next Inbox PR with this model and effort, in a cmux workspace that does not take focus: VIPs first, then the oldest; one at a time, at most 10 a day">
         <button type="button" value="off">Off</button><button type="button" value="on">On</button>
@@ -348,7 +346,7 @@
     <tr><td><kbd>/</kbd></td><td>Search every list, Esc clears</td></tr>
     <tr><td><kbd>?</kbd></td><td>This list, Esc closes</td></tr>
   </table>
-  <p>Right-click a card for Zed, its branch, files, checks or link. Sliders: cwc / cc picks the Claude profile reviews run on (work or personal), auto ones too.</p>
+  <p>Right-click a card for Zed, its branch, files, checks or link. Sliders: the Claude profile picks the CLAUDE_CONFIG_DIR from config.json that reviews run with, auto ones too.</p>
   <h2>Menu bar ring</h2>
   <table>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="75 100" /></svg></td><td>Filled by the share of your queue already reviewed</td></tr>

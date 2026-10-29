@@ -5,3 +5,4 @@ settings.json
 handoffs/
 .DS_Store
 *.bak
+config.json

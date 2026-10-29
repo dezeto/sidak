@@ -1,47 +1,50 @@
 #!/bin/zsh
 # Focus the cmux workspace reviewing a PR, or start one.
-# Takes ccreview://<owner>/<repo>/<pr>[/<model>[/<effort>[/<depth>]]], ccreview://<pr>[...] (crm), or a bare number.
+# Takes ccreview://<owner>/<repo>/<pr>[/<model>[/<effort>[/<depth>]]], ccreview://<pr>[...] (the first reviewable repo in config.json), or a bare number.
 # Also ccfix://<owner>/<repo>/<pr>/<model>/<effort> (claude-fix on my own PR's branch) and ccmerge://<owner>/<repo>/<pr> (squash-merge),
 # ccnudge://<owner>/<repo>/<pr> (re-request every pending reviewer), ccready://<owner>/<repo>/<pr> (leave draft),
 # ccopen://<owner>/<repo>/<pr> (Zed on the review worktree, else the checkout) and ccset://<url-encoded JSON> (the panel's settings.json, replaced atomically).
-# A new review runs on the Claude profile in settings.json (claude-review PROFILE): cc is personal, anything else the work cwc.
+# A new review runs on the Claude profile in settings.json (claude-review PROFILE) when config.json has it, else defaultProfile.
 # FOCUS=false starts the review workspace without switching to it; AUTO=1 (pr-board auto) marks the run "auto" in state.json.
 url=${1:?pr}; scheme=${url%%://*}; url=${url#*://}; url=${url%/}
 # Arc's native host and Sidak.app start this with launchd's PATH, which has no Homebrew gh.
-path+=(/opt/homebrew/bin)
+path+=(/opt/homebrew/bin /usr/local/bin)
+SIDAK_DIR=${SIDAK_DIR:-${0:A:h:h}}
+cfg() { jq -r "$@" $SIDAK_DIR/config.json; }
+org=$(cfg .org) repos=$(cfg .repos); repos=${repos/#\~/$HOME}
 if [[ $scheme == ccset ]]; then
   exec python3 -c 'import json, os, sys, urllib.parse; text = json.dumps(json.loads(urllib.parse.unquote(sys.argv[1])), indent=2) + "\n"; out = sys.argv[2]; open(out + ".tmp", "w").write(text); os.replace(out + ".tmp", out)' \
-    "$url" /Users/adrian/Documents/_git/arc-live-folders/settings.json
+    "$url" $SIDAK_DIR/settings.json
 fi
 parts=(${(s:/:)url})
-if [[ $parts[1] == <-> ]]; then repo=crm; n=$parts[1]; model=$parts[2]; effort=$parts[3]; depth=$parts[4]
+if [[ $parts[1] == <-> ]]; then repo=$(cfg '.reviewable[0]'); n=$parts[1]; model=$parts[2]; effort=$parts[3]; depth=$parts[4]
 else repo=$parts[2]; n=$parts[3]; model=$parts[4]; effort=$parts[5]; depth=$parts[6]; fi
 cmux=/Applications/cmux.app/Contents/Resources/bin/cmux
 if [[ $scheme == ccmerge ]]; then
-  exec gh pr merge "$n" -R "Collabocode/$repo" --squash --delete-branch
+  exec gh pr merge "$n" -R "$org/$repo" --squash --delete-branch
 fi
-if [[ $scheme == ccnudge ]]; then exec gh pr edit "$n" -R "Collabocode/$repo" --add-reviewer "$(gh pr view "$n" -R "Collabocode/$repo" --json reviewRequests --jq '[.reviewRequests[] | .login // (.slug | select(.) | "Collabocode/" + .)] | join(",")')"; fi
-if [[ $scheme == ccready ]]; then exec gh pr ready "$n" -R "Collabocode/$repo"; fi
+if [[ $scheme == ccnudge ]]; then exec gh pr edit "$n" -R "$org/$repo" --add-reviewer "$(gh pr view "$n" -R "$org/$repo" --json reviewRequests --jq '[.reviewRequests[] | .login // (.slug | select(.) | "'$org'/" + .)] | join(",")')"; fi
+if [[ $scheme == ccready ]]; then exec gh pr ready "$n" -R "$org/$repo"; fi
 if [[ $scheme == ccopen ]]; then
-  dir=$HOME/Documents/_git/cc/$repo
+  dir=$repos/$repo
   [[ -d $dir/.claude/worktrees/review-$n ]] && dir+=/.claude/worktrees/review-$n
   exec ${commands[zed]:-/usr/local/bin/zed} "$dir"
 fi
 if [[ $scheme == ccfix ]]; then
   ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "fix $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
   if [[ -n $ref ]]; then exec $cmux workspace select "$ref"; fi
-  exec $cmux new-workspace --focus true --name "fix $repo#$n" --cwd "$HOME/Documents/_git/cc/$repo" \
+  exec $cmux new-workspace --focus true --name "fix $repo#$n" --cwd "$repos/$repo" \
     --command "${model:+MODEL=$model }${effort:+EFFORT=$effort }$HOME/bin/claude-fix $repo $n"
 fi
 # Focus only while state.json says the review is still running; a finished run's idle workspace is closed and a fresh one starts (re-review).
 ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "review $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
-state=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], {}).get("state", ""))' /Users/adrian/Documents/_git/arc-live-folders/state.json "Collabocode/$repo#$n" 2>/dev/null)
+state=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], {}).get("state", ""))' $SIDAK_DIR/state.json "$org/$repo#$n" 2>/dev/null)
 if [[ -n $ref && $state != running ]]; then $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1; ref=""; fi
 if [[ -n $ref ]]; then
   $cmux workspace select "$ref"
 else
-  profile=$(jq -r '.profile // ""' /Users/adrian/Documents/_git/arc-live-folders/settings.json 2>/dev/null)
-  [[ $profile == cc ]] || profile=cwc
-  $cmux new-workspace --focus ${FOCUS:-true} --name "review $repo#$n" --cwd "$HOME/Documents/_git/cc/$repo" \
-    --command "PROFILE=$profile ${AUTO:+AUTO=1 }${model:+MODEL=$model }${effort:+EFFORT=$effort }${depth:+DEPTH=$depth }$HOME/bin/claude-review $repo $n"
+  profile=$(jq -r '.profile // ""' $SIDAK_DIR/settings.json 2>/dev/null)
+  [[ $(cfg --arg p "$profile" '.profiles | has($p)') == true ]] || profile=$(cfg .defaultProfile)
+  $cmux new-workspace --focus ${FOCUS:-true} --name "review $repo#$n" --cwd "$repos/$repo" \
+    --command "PROFILE=$profile ${AUTO:+AUTO=1 }${model:+MODEL=$model }${effort:+EFFORT=$effort }${depth:+DEPTH=$depth }${(q)SIDAK_DIR}/bin/claude-review $repo $n"
 fi

@@ -1,13 +1,8 @@
 // Arc-style sidebar: a switcher over the folders inside the "Spaces" bookmark folder,
-// with the PR lists background.js syncs shown inside PR_SPACES like Arc's live folders.
+// with the PR lists background.js syncs shown inside the space named like config.org (any case), like Arc's live folders.
 const ROOT = 'Spaces';
-const PR_SPACES = ['collabocode'];
-// Repos checked out at ~/Documents/_git/cc/<repo>; ~/bin/claude-review resolves the checkout by name.
 // Repo from the PR url: stored sections from before a sync may lack repoFull.
 const repoOf = (pr) => new URL(pr.url).pathname.split('/').slice(1, 3).join('/');
-const REVIEWABLE = ['crm', 'internal-library', 'crm-kube-manifest', 'bob-the-builder', 'crm-tpa', 'flag-ship', 'helm-charts', 'crm-api-gateway', 'crm-slack-notification', 'dagster'];
-// My GitHub login: the author profile's switch shows its avatar.
-const ME = 'adrianw-cc';
 // One accent per space, picked by position, like Arc's space colours.
 const ACCENTS = ['#5b8def', '#9b6bf2', '#2fb37a', '#f08c38', '#e5609a', '#3bb3c9'];
 
@@ -86,9 +81,20 @@ for (const seg of document.querySelectorAll('#picks-pop .seg[data-key]')) {
 }
 const collapsed = new Set(saved('collapsed', []));
 
-// settings.json sits next to state.json and is shared with Sidak.app and ~/bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze }.
+// config.json (./install.sh writes it) holds everything personal: { org, login, repos, reviewable, rulesRepo, profiles, defaultProfile, extensionId }.
+// Read like settings.json in render(); localStorage caches it for the first paint. Without it the board still renders, with a line saying so.
+// reviewable: repos checked out under config.repos that get Skim / Deep; login: the author profile's switch shows its avatar.
+const NO_CONFIG = { org: '', login: '', reviewable: [], profiles: {}, defaultProfile: '' };
+let config = saved('config', NO_CONFIG);
+async function loadConfig() {
+  const res = await fetch(chrome.runtime.getURL('config.json'), { cache: 'no-store' }).catch(() => null);
+  return res?.ok ? res.json().catch(() => null) : null;
+}
+
+// settings.json sits next to state.json and is shared with Sidak.app and bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze }.
 // Read like reviewState(), written through the opener (ccset://); localStorage caches it so the header renders before the fetch.
-const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, profile: 'cwc' };
+// No profile picked yet: config.defaultProfile.
+const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {} };
 let settings = { ...DEFAULT_SETTINGS, ...saved('settings', {}) };
 // While a write is in flight the file is older than the page, so renders keep the page's copy.
 let settingsWrites = 0;
@@ -103,10 +109,10 @@ function saveSettings(change) {
   save('settings', settings);
   settingsWrites++;
   const url = `ccset://${encodeURIComponent(JSON.stringify(settings))}`;
-  chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url }, (reply) => {
+  chrome.runtime.sendNativeMessage('com.sidak.host', { url }, (reply) => {
     settingsWrites--;
     const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
-    if (error) alert(`Could not save settings:\n${error}\nCheck that Arc may write to the Documents folder, then try again.`);
+    if (error) alert(`Could not save settings:\n${error}\nCheck that Arc may write to the Sidak folder, then try again.`);
     rerender();
   });
   rerender();
@@ -126,7 +132,7 @@ const staleSeg = document.querySelector('#picks-pop [data-setting="staleDays"]')
 const vipBox = document.getElementById('vip');
 // Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the sliders button wears an amber dot while on.
 const autoSeg = document.querySelector('#picks-pop [data-setting="auto"]');
-// Claude profile: the opener reads it from settings.json and starts claude-review with PROFILE=cwc (work) or cc (personal).
+// Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
 const profileSeg = document.querySelector('#picks-pop [data-setting="profile"]');
 // The footer names what a click runs and the list settings, in the pickers' words; model and effort open the sliders popover.
 // The sync status (#status) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
@@ -138,14 +144,19 @@ function renderFoot() {
     button.setAttribute('popovertarget', 'picks-pop');
     return button;
   };
-  const parts = [pick(settings.profile), pick(label('model')), pick(label('effort')), settings.auto?.on && 'Auto on', settings.staleDays > 0 && `Stale ${settings.staleDays} d`].filter(Boolean);
+  const profile = settings.profile || config.defaultProfile;
+  const parts = [profile && pick(profile), pick(label('model')), pick(label('effort')), settings.auto?.on && 'Auto on', settings.staleDays > 0 && `Stale ${settings.staleDays} d`].filter(Boolean);
   footConfig.replaceChildren(...parts.flatMap((part, i) => (i ? [' · ', part] : [part])));
 }
 function showSettings() {
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
-  for (const button of profileSeg.children) button.setAttribute('aria-pressed', button.value === settings.profile);
+  const names = Object.keys(config.profiles);
+  if (names.join() !== [...profileSeg.children].map((button) => button.value).join()) {
+    profileSeg.replaceChildren(...names.map((name) => el('button', { type: 'button', value: name, textContent: name })));
+  }
+  for (const button of profileSeg.children) button.setAttribute('aria-pressed', button.value === (settings.profile || config.defaultProfile));
   picksButton.toggleAttribute('data-auto', autoOn);
   if (document.activeElement !== vipBox) vipBox.value = settings.vip.join('\n');
   renderFoot();
@@ -236,7 +247,7 @@ function prRow(pr) {
   const checks = Object.assign(row.querySelector('.checks'), { textContent: glyph, title: label });
   checks.dataset.state = pr.checks ?? '';
 
-  // ~/bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
+  // bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
   const openInCmux = (depth) => (event) => {
     event.preventDefault();
     let url = `ccreview://${repoOf(pr)}/${pr.number}${depth ? `/${picks.model}/${picks.effort}/${depth}` : ''}`;
@@ -248,8 +259,8 @@ function prRow(pr) {
     }
     // Nudge re-requests every pending reviewer and Mark ready leaves draft: one gh call each in the opener, then a sync shows it.
     if (depth === 'nudge' || depth === 'ready') url = `cc${depth}://${repoOf(pr)}/${pr.number}`;
-    // ~/bin/ccreview-host (native messaging) runs the opener directly; Arc's external-URL launch was unreliable.
-    chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url }, (reply) => {
+    // The native messaging host (bin/) runs the opener directly; Arc's external-URL launch was unreliable.
+    chrome.runtime.sendNativeMessage('com.sidak.host', { url }, (reply) => {
       const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
       if (error) alert(`Could not ${{ merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth] ?? 'start it'}:\n${error}\nIs cmux running? Then try again.`);
       else if (depth === 'nudge' || depth === 'ready') refresh.click();
@@ -283,7 +294,7 @@ function prRow(pr) {
     if (label) actions.prepend(el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip }));
     if (label) actions.firstElementChild.dataset.depth = action;
   }
-  if (!REVIEWABLE.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
+  if (!config.reviewable.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
   for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
   if (pr.claude === 'reviewed') actions.lastElementChild.textContent = 'Again';
 
@@ -343,7 +354,7 @@ function tabButton(title, count, group) {
   return button;
 }
 
-// ~/bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto } }.
+// bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto } }.
 async function reviewState() {
   const res = await fetch(chrome.runtime.getURL('state.json'), { cache: 'no-store' }).catch(() => null);
   return res?.ok ? res.json() : {};
@@ -432,12 +443,16 @@ function renderHeader(space, index, syncStatus) {
 }
 
 async function render() {
-  const [{ sections = [], syncedAt, syncError }, spaces, state, stored] = await Promise.all([
+  const [{ sections = [], syncedAt, syncError }, spaces, state, stored, file] = await Promise.all([
     chrome.storage.local.get(['sections', 'syncedAt', 'syncError']),
     loadSpaces(),
     reviewState(),
     loadSettings(),
+    loadConfig(),
   ]);
+  config = { ...NO_CONFIG, ...file };
+  save('config', config);
+  showMe();
   if (!settingsWrites) settings = stored;
   save('settings', settings);
   showSettings();
@@ -452,9 +467,10 @@ async function render() {
   nav.replaceChildren(...spaces.map((s, i) => spaceButton(s, i, i === index)));
 
   // Without a Spaces folder (Arc, which has its own spaces) this is a plain PR live folder.
-  const prs = !space || PR_SPACES.includes(space.title) ? [board(sections, state)] : [];
+  const prs = !space || space.title.toLowerCase() === config.org.toLowerCase() ? [board(sections, state)] : [];
   const bookmarks = space ? space.children.map(bookmarkNode) : [];
-  list.replaceChildren(...prs, ...(prs.length && bookmarks.length ? [el('hr')] : []), ...bookmarks);
+  const missing = file ? [] : [el('p', { className: 'empty', textContent: 'No config.json: run ./install.sh in the Sidak folder.' })];
+  list.replaceChildren(...missing, ...prs, ...(prs.length && bookmarks.length ? [el('hr')] : []), ...bookmarks);
   const columns = [...list.querySelectorAll('.column')];
   // Counts leave out the folded stale rows; the switch's Mine count is Needs me.
   const prsIn = (section) => section.querySelectorAll(':scope > .pr').length;
@@ -492,7 +508,7 @@ menu.onclick = ({ target }) => {
   if (action === 'branch' || action === 'link') copyText(action === 'branch' ? menuPr.branch : menuPr.url);
   // The opener runs Zed on the PR's review worktree, else on the checkout.
   if (action !== 'zed') return;
-  chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url: `ccopen://${repoOf(menuPr)}/${menuPr.number}` }, (reply) => {
+  chrome.runtime.sendNativeMessage('com.sidak.host', { url: `ccopen://${repoOf(menuPr)}/${menuPr.number}` }, (reply) => {
     const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
     if (error) alert(`Could not open Zed:\n${error}\nCheck that the zed CLI is installed (zed: install cli in Zed), then try again.`);
   });
@@ -570,10 +586,16 @@ document.addEventListener('keydown', (event) => {
 // Profile: Inbox (reviewing, the pipeline behind the tabs) or Mine (my own PRs, blockers first), from the round switch, Tab,
 // ⌘← / ⌘→ or a sideways swipe; the header follows it. #inbox / #mine in the URL still pick one; the last profile is kept like the tab.
 const profileSwitch = document.getElementById('view');
-// 128 px for the 26 px disc on a retina screen.
-const avatarImg = el('img', { src: `https://github.com/${ME}.png?size=128`, alt: '' });
-avatarImg.onerror = () => avatarImg.remove();
-profileSwitch.querySelector('.me').append(avatarImg);
+// config.login's initial, covered by its avatar: 128 px for the 26 px disc on a retina screen. render() redraws it once config.json is read.
+const me = profileSwitch.querySelector('.me');
+function showMe() {
+  if (me.dataset.login === config.login) return;
+  me.dataset.login = config.login;
+  const img = el('img', { src: `https://github.com/${config.login}.png?size=128`, alt: '' });
+  img.onerror = () => img.remove();
+  me.replaceChildren(config.login.slice(0, 1).toUpperCase(), img);
+}
+showMe();
 // The badge on the switch counts the current profile's work: Inbox to review, or Needs me; none at 0.
 const viewCount = document.getElementById('view-count');
 let counts = { inbox: 0, mine: 0 };
