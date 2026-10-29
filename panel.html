@@ -1,0 +1,370 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="color-scheme" content="light dark" />
+<title>Pull requests</title>
+<link rel="preconnect" href="https://avatars.githubusercontent.com" />
+<link rel="preconnect" href="https://github.com" />
+<style>
+  :root {
+    --accent: #5b8def;
+    --bg: color-mix(in srgb, var(--accent) 6%, Canvas);
+    --muted: color-mix(in srgb, CanvasText 55%, transparent);
+    --faint: color-mix(in srgb, CanvasText 35%, transparent);
+    --hover: color-mix(in srgb, CanvasText 7%, transparent);
+    --track: color-mix(in srgb, CanvasText 6%, transparent);
+    --raised: Canvas;
+    --line: color-mix(in srgb, CanvasText 10%, transparent);
+    --green: #1a7f37;
+    --red: #cf222e;
+    --amber: #9a6700;
+    --grey: #59636e;
+    --gold: #bf8700;
+    --disc: #2c2c31;
+    scrollbar-width: thin;
+    scrollbar-color: var(--line) transparent;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121214;
+      --raised: #333338; --hover: #1c1c1f; --track: #1e1e21;
+      --green: #3fb950;
+      --red: #f85149;
+      --amber: #d29922;
+      --grey: #9198a1;
+      --gold: #e3b341;
+      --disc: #3a3a40;
+    }
+  }
+  html { background: var(--bg); }
+  /* Popup width (Arc copy); a pinned tab shows the same narrow list, centred. */
+  /* A column at least the window's height, so the footer sits at the bottom under a short list too. */
+  body { display: flex; flex-direction: column; width: 440px; min-height: 100vh; margin: 0 auto; font: 13px/1.35 -apple-system, system-ui, sans-serif; background: var(--bg); color: CanvasText; }
+  button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }
+  a, summary, button { -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .icon { width: 16px; height: 16px; flex: none; }
+
+  /* Header */
+  header { position: sticky; top: 0; z-index: 1; padding: 10px 12px; background: var(--bg); border-bottom: 1px solid var(--line); }
+  /* Visually hidden: keeps a top heading for assistive tech. */
+  h1 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* Footer: what a click runs (model, effort, auto) and the stale cut-off, then the sync status; the list scrolls above it. */
+  #foot { position: sticky; bottom: 0; z-index: 1; display: flex; padding: 6px 12px; border-top: 1px solid var(--line); background: var(--bg); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  #foot-config { flex: none; }
+  #foot .pick { padding: 0; font-size: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; }
+  #foot .pick:hover { color: CanvasText; text-decoration-color: currentColor; }
+  #status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  #status:not(:empty)::before { content: ' · '; white-space: pre; }
+  #status[data-error='true'] { color: var(--red); }
+  .find { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .find > .search { margin-right: 2px; }
+  .search { display: flex; flex: 1; align-items: center; gap: 7px; height: 28px; padding: 0 9px; border-radius: 7px; background: var(--track); color: var(--faint); }
+  .search:focus-within { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .search .icon { width: 14px; height: 14px; }
+  .search kbd { margin: 0; }
+  .search:focus-within kbd { display: none; }
+  #search { flex: 1; min-width: 0; padding: 5px 0; border: 0; background: none; color: CanvasText; font: inherit; font-size: 12px; outline: none; }
+  #search::placeholder { color: var(--faint); }
+  #search::-webkit-search-cancel-button { -webkit-appearance: none; }
+  .pr[hidden] { display: none; }
+  /* Model + effort live in a popover under the sliders button; Arc's Chromium has CSS anchor positioning. */
+  #picks { position: relative; anchor-name: --picks; }
+  /* Amber dot while auto review is on: Sidak.app starts reviews without a click. */
+  #picks[data-auto]::after { content: ''; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+  #picks-pop {
+    position-anchor: --picks; inset: auto; top: anchor(bottom); right: anchor(right); width: 220px; margin: 4px 0 0;
+    padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, CanvasText 6%, var(--bg));
+    color: CanvasText; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25);
+  }
+  #picks-pop p { margin: 0 0 4px; font-size: 10.5px; font-weight: 600; color: var(--muted); }
+  #picks-pop .seg + p { margin-top: 8px; }
+  /* Right-click menu on a card (panel.js openMenu), placed at the pointer. */
+  #menu { inset: auto; min-width: 140px; margin: 0; padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); color: CanvasText; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); }
+  #menu [data-do] { display: block; box-sizing: border-box; width: 100%; padding: 4px 8px; border-radius: 5px; color: inherit; font-size: 12px; text-align: start; text-decoration: none; }
+  #menu [data-do]:hover { background: var(--accent); color: #fff; }
+  #menu button:disabled { opacity: 0.5; background: none; color: inherit; cursor: default; }
+  #vip { box-sizing: border-box; display: block; width: 100%; padding: 5px 7px; border: 0; border-radius: 7px; background: var(--track); color: CanvasText; font: 11px/1.4 ui-monospace, Menlo, monospace; resize: vertical; }
+  #vip:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .seg, #tabs { display: flex; flex: 1; gap: 1px; padding: 2px; border-radius: 8px; background: var(--track); }
+  .seg button, #tabs button { flex: 1; padding: 3px 4px; border-radius: 6px; font-size: 10.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .seg button:hover, #tabs button:hover { color: CanvasText; }
+  .seg button[aria-pressed='true'], #tabs button[aria-pressed='true'] { background: var(--raised); color: CanvasText; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--line); }
+  /* Popup: one list at a time behind the tabs; a search shows matches from every list. Wide: all columns, no tabs. */
+  #tabs { margin-top: 8px; }
+  #tabs:empty { display: none; }
+  /* Profile switch left of the search: the inbox tray on a dark disc while reviewing, my avatar on my own PRs ("A" on accent if it fails),
+     ringed in the accent. The badge counts the current profile's work and sits on the wrapper, outside the disc's clip. */
+  .switch { position: relative; display: grid; flex: none; }
+  #view { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; overflow: hidden; border-radius: 50%; background: var(--disc); color: #fff; }
+  body[data-view='mine'] #view { background: var(--track); box-shadow: 0 0 0 1.5px var(--accent); }
+  #view .icon { width: 14px; height: 14px; }
+  #view .me { position: relative; display: grid; place-items: center; width: 100%; height: 100%; font-size: 12px; font-weight: 700; }
+  #view .me:not(:has(img)) { background: var(--accent); }
+  #view .me img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+  #view-count {
+    position: absolute; right: -5px; bottom: -4px; box-sizing: border-box; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px;
+    background: var(--accent); color: #fff; font-size: 9.5px; font-weight: 700; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 0 1.5px var(--bg); pointer-events: none;
+  }
+  #view-count:empty { display: none; }
+  body[data-view='mine'] #view .icon, body:not([data-view='mine']) #view .me { display: none; }
+  /* The tab bar holds both profiles' tabs and shows the current one's. Nothing to switch without a board. */
+  body[data-view='mine'] #tabs [data-group='inbox'], body:not([data-view='mine']) #tabs [data-group='mine'], body:not(:has(.board)) .switch { display: none; }
+  #tabs button { padding: 0 4px; height: 28px; font-size: 12px; font-weight: 500; }
+  .n { margin-left: 5px; color: var(--muted); }
+  #tabs .n[data-live] { color: var(--amber); }
+  @media (max-width: 759px) {
+    /* One list at a time: the current profile's open tab (panel.js marks it .active). */
+    .column:not(.active), .board .column > h2 { display: none; }
+    /* The tab already says each row's state, so the ring and its column show only while a search mixes the lists. */
+    .board:not([data-searching]) .pr { grid-template-columns: minmax(0, 1fr) auto; }
+    .board:not([data-searching]) .pr::before { display: none; }
+    .board:not([data-searching]) .meta { grid-column: 1; }
+    .board:not([data-searching]) :is(.time, .avatars, .actions) { grid-column: 2; }
+    /* A search shows the matches from every list of the current profile, under their headings. */
+    :where(body[data-view='inbox']) .board[data-searching] .column[data-group='inbox'],
+    :where(body[data-view='mine']) .board[data-searching] .column[data-group='mine'] { display: block; }
+    .board[data-searching] .column > h2 { display: flex; }
+    .board[data-searching] .column:not(:has(.pr:not([hidden]))) { display: none; }
+  }
+  #refresh, #picks { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 8px; color: var(--muted); }
+  #refresh:hover, #picks:hover, .find:has(:popover-open) #picks { background: var(--hover); color: CanvasText; }
+  #refresh.spinning .icon { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { *, ::before { animation: none !important; transition: none !important; } }
+
+  nav { display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--track); }
+  nav:empty { display: none; }
+  /* Board: one tab's list in the popup, six columns (inbox row, Mine row) once there is room. */
+  .board { display: grid; gap: 4px; }
+  @media (min-width: 760px) {
+    body { width: auto; max-width: 1240px; padding: 0 16px; }
+    #tabs { display: none; }
+    .board { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+    .column { min-width: 0; padding: 4px; border-radius: 12px; background: color-mix(in srgb, CanvasText 3%, transparent); }
+    /* Sidak.app opens panel.html#inbox or #mine: one menu-bar item per view. */
+    body[data-view='inbox'] .column[data-group='mine'] { display: none; }
+    body[data-view='mine'] .column[data-group='inbox'] { display: none; }
+  }
+  .space {
+    display: flex; flex: 1 1 auto; align-items: center; justify-content: center; gap: 6px; min-width: 0;
+    padding: 6px 8px; border-radius: 7px; font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--muted); white-space: nowrap; transition: background 0.15s, color 0.15s;
+  }
+  .space span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  .space:hover { color: CanvasText; }
+  .space[aria-pressed='true'] { background: var(--raised); color: CanvasText; box-shadow: 0 1px 2px rgb(0 0 0 / 0.12), 0 0 0 0.5px var(--line); }
+  .dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--dot); }
+
+  /* Tree */
+  main { flex: 1; padding: 8px; }
+  hr { height: 1px; margin: 8px 8px; border: 0; background: var(--line); }
+  details { position: relative; }
+  summary {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px;
+    list-style: none; user-select: none; cursor: default;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: ''; width: 5px; height: 5px; flex: none; margin: 0 2px 0 1px;
+    border: solid var(--faint); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.15s;
+  }
+  details[open] > summary::before { transform: rotate(45deg) translate(-1px, -1px); }
+  summary:hover, .link:hover, .pr:hover { background: var(--hover); }
+  .folder > summary { font-weight: 650; }
+  .folder > summary .icon { color: var(--muted); }
+  .folder[open]::after { content: ''; position: absolute; top: 32px; bottom: 4px; left: 12px; width: 1px; background: var(--line); }
+  .folder > :not(summary) { margin-left: 14px; }
+  .column > h2 { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px 8px 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+  .column > h2 .icon { width: 14px; height: 14px; color: var(--muted); }
+  kbd { margin-left: auto; padding: 0 4px; border-radius: 4px; background: var(--track); font: 10px/16px ui-monospace, Menlo, monospace; color: var(--faint); }
+  #help { padding: 10px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--raised); color: CanvasText; font-size: 12px; box-shadow: 0 8px 24px rgb(0 0 0 / 0.25); }
+  #help::backdrop { background: rgb(0 0 0 / 0.3); }
+  #help td { padding: 3px 8px 3px 0; }
+  #help kbd { margin: 0; font-size: 11px; }
+  .count { margin-left: auto; font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .empty { margin: 0; padding: 6px 8px 6px 30px; font-size: 12px; color: var(--muted); }
+  /* Stale rows fold away at the end of a list, outside its count; a search opens the fold. */
+  details.stale > summary { margin-top: 2px; font-size: 12px; color: var(--muted); }
+  .board[data-searching] details.stale:not(:has(.pr:not([hidden]))) { display: none; }
+  #help h2 { margin: 10px 0 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  #help p { margin: 4px 0 0; color: var(--muted); }
+  .ring { display: block; width: 16px; height: 16px; transform: rotate(-90deg); fill: none; stroke: CanvasText; stroke-width: 2; }
+  .ring .track { stroke: color-mix(in srgb, CanvasText 25%, transparent); }
+  .ring .run { stroke: var(--amber); }
+  .ring .low { stroke: var(--red); }
+
+  .link { display: flex; align-items: center; gap: 9px; padding: 6px 8px; border-radius: 8px; color: inherit; text-decoration: none; }
+  .link img { width: 16px; height: 16px; flex: none; border-radius: 3px; }
+  .link span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+
+  .pr {
+    display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; row-gap: 2px; align-items: center;
+    padding: 7px 8px; border-radius: 8px; color: inherit; text-decoration: none; scroll-margin-block: 96px 40px;
+  }
+  /* Status ring: hollow = waiting, amber arc = Claude running, filled check = reviewed, red = failed. */
+  .pr > .icon { display: none; }
+  .pr::before { content: ''; grid-row: span 2; grid-column: 1; box-sizing: border-box; width: 14px; height: 14px; margin-left: 1px; border: 1.5px solid var(--faint); border-radius: 50%; }
+  .pr[data-claude='running']::before { border-color: var(--track); border-top-color: var(--amber); animation: spin 1.2s linear infinite; }
+  .pr[data-claude='reviewed']::before { border: 0; background: var(--green) center / 9px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-6.5' fill='none' stroke='%23071' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
+  .pr[data-claude='failed']::before { border-color: var(--red); }
+  .title { font-size: 13px; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Author profile: a pill right after the title when it says more than the tab (the blocker, who is awaited). */
+  .title:has(.pill) { display: flex; align-items: center; gap: 6px; }
+  .title .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pill { flex: none; padding: 0 6px; border-radius: 8px; font-size: 10.5px; font-weight: 600; line-height: 16px; color: var(--state); background: color-mix(in srgb, var(--state) 13%, transparent); }
+  .pill[data-group='needs'] { --state: var(--red); }
+  .pill[data-group='waiting'] { --state: var(--amber); }
+  .icon.vip { width: 11px; height: 11px; margin-left: 3px; vertical-align: -1px; color: var(--gold); }
+    .pr[data-state='DRAFT'] { opacity: 0.7; }
+  /* Quick / Review take the avatars' spot on hover or j/k focus. */
+  .actions { display: none; gap: 4px; grid-column: 3; grid-row: 1 / span 2; }
+  .pr:is(:hover, :focus-within) .actions { display: flex; }
+  .pr:is(:hover, :focus-within):has(.actions) :is(.avatars, .time) { display: none; }
+  .time { grid-column: 3; grid-row: 1; justify-self: end; font-size: 11.5px; color: var(--faint); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .meta { grid-column: 2; display: flex; align-items: center; gap: 8px; min-height: 16px; font-size: 11.5px; color: var(--muted); }
+  .text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .state { font-weight: 600; color: var(--state); }
+  .checks { font-size: 11px; font-weight: 700; color: var(--state); }
+  .avatars { grid-column: 3; grid-row: 2; display: flex; align-items: center; justify-self: end; }
+  .avatars img { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--bg), 0 0 0 3px var(--state); }
+  .avatars img + img { margin-left: 1px; }
+  .more { margin-left: 5px; font-size: 11px; color: var(--muted); }
+  .claude { font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--state); }
+  .claude:empty { display: none; }
+  .claude { cursor: pointer; }
+  .claude:hover { text-decoration: underline; }
+  .claude svg { width: 13px; height: 13px; display: block; }
+  .review { height: 22px; padding: 0 9px; border-radius: 6px; background: var(--track); font-size: 11.5px; font-weight: 600; color: CanvasText; }
+  .review:hover { background: var(--hover); color: CanvasText; }
+  .review.merge, .review[data-depth='full'], .review.fix { background: var(--green); color: #fff; }
+  .review:disabled { opacity: 0.5; cursor: default; }
+  .claude[data-state='reviewed'] { --state: var(--green); }
+  .claude[data-state='failed'] { --state: var(--red); }
+  .claude[data-state='queued'], .claude[data-state='running'] { --state: var(--amber); }
+
+  [data-state='APPROVED'], [data-state='SUCCESS'] { --state: var(--green); }
+  [data-state='CHANGES_REQUESTED'], [data-state='FAILURE'], [data-state='ERROR'] { --state: var(--red); }
+  [data-state='REVIEW_REQUIRED'], [data-state='PENDING'], [data-state='EXPECTED'] { --state: var(--amber); }
+  [data-state='DRAFT'] { --state: var(--grey); }
+  .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
+</style>
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+  <symbol id="i-pr" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M1.5 3.25a2.25 2.25 0 1 1 3 2.122v5.256a2.251 2.251 0 1 1-1.5 0V5.372A2.25 2.25 0 0 1 1.5 3.25Zm5.677-.177L9.573.677A.25.25 0 0 1 10 .854V2.5h1A2.5 2.5 0 0 1 13.5 5v5.628a2.251 2.251 0 1 1-1.5 0V5a1 1 0 0 0-1-1h-1v1.646a.25.25 0 0 1-.427.177L7.177 3.427a.25.25 0 0 1 0-.354ZM3.75 2.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm0 9.5a.75.75 0 1 0 0 1.5.75.75 0 0 0 0-1.5Zm8.25.75a.75.75 0 1 0 1.5 0 .75.75 0 0 0-1.5 0Z" />
+  </symbol>
+  <symbol id="i-inbox" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M3.2 3.25h9.6l1.45 5.5v3.5a1 1 0 0 1-1 1h-10.5a1 1 0 0 1-1-1v-3.5zM1.75 8.75h3.5l1 2h3.5l1-2h3.5" />
+  </symbol>
+  <symbol id="i-star" viewBox="0 0 16 16">
+    <path fill="currentColor" d="M8 1.25l2.05 4.15 4.58.67-3.32 3.23.79 4.56L8 11.7l-4.1 2.16.79-4.56L1.37 6.07l4.58-.67z" />
+  </symbol>
+  <symbol id="i-play" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M8 14.25a6.25 6.25 0 1 1 0-12.5 6.25 6.25 0 0 1 0 12.5zM6.6 5.6v4.8L10.4 8z" />
+  </symbol>
+  <symbol id="i-done" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M8 14.25a6.25 6.25 0 1 1 0-12.5 6.25 6.25 0 0 1 0 12.5zM5.2 8.2l2 2 3.8-4.4" />
+  </symbol>
+  <symbol id="i-person" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" d="M8 8.25a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5zM2.75 14a5.25 5.25 0 0 1 10.5 0" />
+  </symbol>
+  <symbol id="i-search" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M7 11.5a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9zm3.3-1.2 3.2 3.2" />
+  </symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" d="M1.75 4a1.25 1.25 0 0 1 1.25-1.25h3.1l1.5 1.5h5.4A1.25 1.25 0 0 1 14.25 5.5v6.75a1.25 1.25 0 0 1-1.25 1.25H3a1.25 1.25 0 0 1-1.25-1.25Z" />
+  </symbol>
+  <symbol id="i-sliders" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6M10 6a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM6 13a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+  </symbol>
+  <symbol id="i-refresh" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12.25 1.75v2.9h-2.9" />
+  </symbol>
+</svg>
+<header>
+  <h1 id="space-title">Pull requests</h1>
+  <div class="find">
+    <span class="switch"><button id="view" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true">A</span></button><span id="view-count" aria-hidden="true"></span></span>
+    <label class="search">
+      <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
+      <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
+      <kbd>/</kbd>
+    </label>
+    <button id="picks" popovertarget="picks-pop" aria-label="Review model, effort and list settings"><svg class="icon"><use href="#i-sliders" /></svg></button>
+    <button id="refresh" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon"><use href="#i-refresh" /></svg></button>
+    <div id="picks-pop" popover>
+      <p>Model for new reviews</p>
+      <div class="seg" data-key="model" role="group" aria-label="Model for new reviews">
+        <button type="button" value="opus">Opus</button><button type="button" value="sonnet">Sonnet</button>
+      </div>
+      <p>Effort</p>
+      <div class="seg" data-key="effort" role="group" aria-label="Effort for new reviews">
+        <button type="button" value="medium">Med</button><button type="button" value="high">High</button>
+      </div>
+      <p>Claude profile</p>
+      <div class="seg" data-setting="profile" role="group" aria-label="Claude profile for new reviews" title="cwc: the work account (~/.claude-work), cc: the personal one">
+        <button type="button" value="cwc">cwc</button><button type="button" value="cc">cc</button>
+      </div>
+      <p>Auto review (quick)</p>
+      <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of the next Inbox PR with this model and effort, in a cmux workspace that does not take focus: VIPs first, then the oldest; one at a time, at most 10 a day">
+        <button type="button" value="off">Off</button><button type="button" value="on">On</button>
+      </div>
+      <p>Hide after</p>
+      <div class="seg" data-setting="staleDays" role="group" aria-label="Hide PRs not updated for" title="PRs not updated for this long fold into Stale in Inbox and Mine (x opens it)">
+        <button type="button" value="7">7 d</button><button type="button" value="30">30 d</button><button type="button" value="90">90 d</button><button type="button" value="0">Off</button>
+      </div>
+      <p><label for="vip">VIP authors, one login or email per line</label></p>
+      <textarea id="vip" name="vip" rows="3" spellcheck="false" autocomplete="off" placeholder="octocat&#10;someone@example.com"></textarea>
+    </div>
+  </div>
+  <div id="tabs" role="group" aria-label="PR lists"></div>
+  <nav id="spaces" aria-label="Spaces" style="margin-top: 6px"></nav>
+</header>
+<main id="list"></main>
+<footer id="foot"><span id="foot-config"></span><span id="status"></span></footer>
+<div id="menu" popover>
+  <button type="button" data-do="zed">Open in Zed</button>
+  <button type="button" data-do="branch">Copy branch</button>
+  <a data-do="files" target="_blank">Files changed</a>
+  <a data-do="checks" target="_blank">Checks</a>
+  <button type="button" data-do="link">Copy link</button>
+</div>
+<dialog id="help" aria-label="Keyboard shortcuts">
+  <table>
+    <tr><td><kbd>Tab</kbd></td><td>Switch between Inbox and Mine; <kbd>⌘←</kbd> or a swipe left picks Inbox, <kbd>⌘→</kbd> or a swipe right Mine</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Pick a tab: Inbox, Running, Reviewed; in Mine Needs me, Waiting, Ready, Drafts</td></tr>
+    <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>Next / previous card</td></tr>
+    <tr><td><kbd>d</kbd></td><td>Deep review the focused card; on your own PRs: findings in the terminal only</td></tr>
+    <tr><td><kbd>s</kbd></td><td>Skim the focused card; on your own PRs: findings in the terminal only</td></tr>
+    <tr><td><kbd>f</kbd></td><td>Fix my focused PR in cmux (threads, checks, conflicts)</td></tr>
+    <tr><td><kbd>n</kbd></td><td>Nudge: re-request review on my focused PR</td></tr>
+    <tr><td><kbd>m</kbd></td><td>Squash-merge my focused PR</td></tr>
+    <tr><td><kbd>r</kbd></td><td>Mark my focused draft ready for review</td></tr>
+    <tr><td><kbd>o</kbd></td><td>Open its cmux workspace; on a reviewed card the PR, on a failed one skim again</td></tr>
+    <tr><td><kbd>Enter</kbd></td><td>Open the PR</td></tr>
+    <tr><td><kbd>x</kbd></td><td>Show or hide the stale PRs in this list</td></tr>
+    <tr><td><kbd>h</kbd></td><td>Snooze the focused card for a day (it waits in the stale fold); <kbd>h</kbd> there brings it back</td></tr>
+    <tr><td><kbd>⇧R</kbd></td><td>Sync PRs now</td></tr>
+    <tr><td><kbd>/</kbd></td><td>Search every list, Esc clears</td></tr>
+    <tr><td><kbd>?</kbd></td><td>This list, Esc closes</td></tr>
+  </table>
+  <p>Right-click a card for Zed, its branch, files, checks or link. Sliders: cwc / cc picks the Claude profile reviews run on (work or personal), auto ones too.</p>
+  <h2>Menu bar ring</h2>
+  <table>
+    <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="75 100" /></svg></td><td>Filled by the share of your queue already reviewed</td></tr>
+    <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="50 100" /><circle class="run" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="0 50 25 100" /></svg></td><td>Amber: reviews running now</td></tr>
+    <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle class="low" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="15 100" /></svg></td><td>Red: under a fifth done, the pile is growing</td></tr>
+    <tr><td><b>A</b></td><td>Auto review is on (sliders, amber dot): while Sidak.app runs, the next Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest; one at a time, at most 10 a day</td></tr>
+  </table>
+  <p>The number beside the ring is how many still wait for you. <kbd>⌃⌥P</kbd> opens this panel from anywhere; drag it off the menu bar to keep it as a window. A notification tells you when a review lands; click it to open the PR.</p>
+</dialog>
+<template id="pr">
+  <a class="pr" target="_blank">
+    <svg class="icon" aria-hidden="true"><use href="#i-pr" /></svg>
+    <span class="title"></span>
+    <span class="time"></span>
+    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info"></span></span><span class="claude"></span></span><span class="avatars"></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only">Skim</button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings">Deep</button></span>
+  </a>
+</template>
+<script src="pr.js"></script>
+<script src="panel.js"></script>

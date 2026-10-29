@@ -1,0 +1,619 @@
+// Arc-style sidebar: a switcher over the folders inside the "Spaces" bookmark folder,
+// with the PR lists background.js syncs shown inside PR_SPACES like Arc's live folders.
+const ROOT = 'Spaces';
+const PR_SPACES = ['collabocode'];
+// Repos checked out at ~/Documents/_git/cc/<repo>; ~/bin/claude-review resolves the checkout by name.
+// Repo from the PR url: stored sections from before a sync may lack repoFull.
+const repoOf = (pr) => new URL(pr.url).pathname.split('/').slice(1, 3).join('/');
+const REVIEWABLE = ['crm', 'internal-library', 'crm-kube-manifest', 'bob-the-builder', 'crm-tpa', 'flag-ship', 'helm-charts', 'crm-api-gateway', 'crm-slack-notification', 'dagster'];
+// My GitHub login: the author profile's switch shows its avatar.
+const ME = 'adrianw-cc';
+// One accent per space, picked by position, like Arc's space colours.
+const ACCENTS = ['#5b8def', '#9b6bf2', '#2fb37a', '#f08c38', '#e5609a', '#3bb3c9'];
+
+const nav = document.getElementById('spaces');
+const list = document.getElementById('list');
+const status = document.getElementById('status');
+const refresh = document.getElementById('refresh');
+const tabsBar = document.getElementById('tabs');
+// Filter: hides cards whose text does not contain the query; counts stay as the full list.
+// While a query is typed the popup shows every list's matches, not just the open tab's.
+const search = document.getElementById('search');
+function applyFilter() {
+  const query = search.value.trim().toLowerCase();
+  for (const row of list.querySelectorAll('.pr')) row.hidden = Boolean(query) && !row.textContent.toLowerCase().includes(query);
+  // Stale rows always take part: their fold opens while the query matches inside it.
+  for (const fold of list.querySelectorAll('details.stale')) fold.open = Boolean(query) && fold.querySelector('.pr:not([hidden])') !== null;
+  list.querySelector('.board')?.toggleAttribute('data-searching', Boolean(query));
+}
+search.oninput = applyFilter;
+search.onkeydown = (event) => {
+  if (event.key === 'Escape') {
+    search.value = '';
+    applyFilter();
+    search.blur();
+  }
+};
+const rowTemplate = document.getElementById('pr').content.firstElementChild;
+
+const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes requested', REVIEW_REQUIRED: 'Needs review', DRAFT: 'Draft' };
+const REVIEWER_LABELS = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', PENDING: 'review pending' };
+// The one button on my own PR, by authorState().action: [label, tooltip]. The opener runs ccfix / ccnudge / ccmerge / ccready.
+const AUTHOR_ACTIONS = {
+  fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review'],
+  nudge: ['Nudge', 'Re-request review from everyone still pending'],
+  merge: ['Merge', 'Squash-merge and delete the branch'],
+  ready: ['Mark ready', 'Mark ready for review'],
+};
+const CHECKS = {
+  SUCCESS: ['✓', 'Checks passed'],
+  FAILURE: ['✕', 'Checks failed'],
+  ERROR: ['✕', 'Checks errored'],
+  PENDING: ['●', 'Checks running'],
+  EXPECTED: ['●', 'Checks expected'],
+};
+// state.json verdict (claude-review): the state of my posted review.
+const VERDICTS = { approved: 'approved', changes: 'changes requested', commented: 'commented' };
+const MAX_AVATARS = 4;
+const UNITS = [['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
+const relative = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
+
+// The open space and collapsed folders survive closing the panel.
+const saved = (key, fallback) => JSON.parse(localStorage.getItem(key)) ?? fallback;
+const save = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+const el = (tag, props) => Object.assign(document.createElement(tag), props);
+let activeSpace = saved('space', null);
+// Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
+const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
+// The pickers sit in a popover; the sliders button's tooltip names the current picks.
+const picksButton = document.getElementById('picks');
+for (const seg of document.querySelectorAll('#picks-pop .seg[data-key]')) {
+  const key = seg.dataset.key;
+  const show = () => {
+    for (const button of seg.children) button.setAttribute('aria-pressed', button.value === picks[key]);
+    const pressed = [...document.querySelectorAll('#picks-pop .seg[data-key] [aria-pressed="true"]')].map((button) => button.textContent);
+    picksButton.title = `Reviews use ${pressed.join(' · ')}`;
+  };
+  // settings.json carries the picks too: pr-board auto starts its reviews with them.
+  seg.onclick = ({ target }) => {
+    if (!target.value) return;
+    picks[key] = target.value;
+    save(key, picks[key]);
+    saveSettings({ [key]: picks[key] });
+    show();
+  };
+  show();
+}
+const collapsed = new Set(saved('collapsed', []));
+
+// settings.json sits next to state.json and is shared with Sidak.app and ~/bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze }.
+// Read like reviewState(), written through the opener (ccset://); localStorage caches it so the header renders before the fetch.
+const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, profile: 'cwc' };
+let settings = { ...DEFAULT_SETTINGS, ...saved('settings', {}) };
+// While a write is in flight the file is older than the page, so renders keep the page's copy.
+let settingsWrites = 0;
+async function loadSettings() {
+  if (settingsWrites) return settings;
+  const res = await fetch(chrome.runtime.getURL('settings.json'), { cache: 'no-store' }).catch(() => null);
+  const file = res?.ok ? await res.json().catch(() => null) : null;
+  return { ...DEFAULT_SETTINGS, ...(file ?? saved('settings', {})) };
+}
+function saveSettings(change) {
+  settings = { ...settings, ...change };
+  save('settings', settings);
+  settingsWrites++;
+  const url = `ccset://${encodeURIComponent(JSON.stringify(settings))}`;
+  chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url }, (reply) => {
+    settingsWrites--;
+    const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
+    if (error) alert(`Could not save settings:\n${error}\nCheck that Arc may write to the Documents folder, then try again.`);
+    rerender();
+  });
+  rerender();
+}
+// Snooze (h): settings.snooze maps "owner/repo#n" to the time the PR comes back, a day from the press; h again brings it back now.
+// Expired entries drop at the next write, so the file stays small.
+const snoozedUntil = (pr) => settings.snooze?.[`${repoOf(pr)}#${pr.number}`] ?? 0;
+function toggleSnooze(key) {
+  if (!key) return;
+  const now = Date.now();
+  const snooze = Object.fromEntries(Object.entries(settings.snooze ?? {}).filter(([k, until]) => k !== key && until > now));
+  if (!(settings.snooze?.[key] > now)) snooze[key] = now + 86400000;
+  saveSettings({ snooze });
+}
+// Hide after (the stale cut-off) and the VIP list sit in the sliders popover under model and effort.
+const staleSeg = document.querySelector('#picks-pop [data-setting="staleDays"]');
+const vipBox = document.getElementById('vip');
+// Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the sliders button wears an amber dot while on.
+const autoSeg = document.querySelector('#picks-pop [data-setting="auto"]');
+// Claude profile: the opener reads it from settings.json and starts claude-review with PROFILE=cwc (work) or cc (personal).
+const profileSeg = document.querySelector('#picks-pop [data-setting="profile"]');
+// The footer names what a click runs and the list settings, in the pickers' words; model and effort open the sliders popover.
+// The sync status (#status) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
+const footConfig = document.getElementById('foot-config');
+function renderFoot() {
+  const label = (key) => document.querySelector(`#picks-pop .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
+  const pick = (text) => {
+    const button = el('button', { type: 'button', className: 'pick', textContent: text, title: 'Change profile, model and effort for new reviews' });
+    button.setAttribute('popovertarget', 'picks-pop');
+    return button;
+  };
+  const parts = [pick(settings.profile), pick(label('model')), pick(label('effort')), settings.auto?.on && 'Auto on', settings.staleDays > 0 && `Stale ${settings.staleDays} d`].filter(Boolean);
+  footConfig.replaceChildren(...parts.flatMap((part, i) => (i ? [' · ', part] : [part])));
+}
+function showSettings() {
+  for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
+  const autoOn = Boolean(settings.auto?.on);
+  for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
+  for (const button of profileSeg.children) button.setAttribute('aria-pressed', button.value === settings.profile);
+  picksButton.toggleAttribute('data-auto', autoOn);
+  if (document.activeElement !== vipBox) vipBox.value = settings.vip.join('\n');
+  renderFoot();
+}
+staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Number(target.value) });
+// Turning it on writes the picks as well, so the runs use the model and effort shown here.
+autoSeg.onclick = ({ target }) => target.value && saveSettings({ auto: { ...settings.auto, on: target.value === 'on' }, ...picks });
+profileSeg.onclick = ({ target }) => target.value && saveSettings({ profile: target.value });
+let vipTyping;
+const saveVip = () => {
+  clearTimeout(vipTyping);
+  vipTyping = null;
+  const vip = vipBox.value.split('\n').map((line) => line.trim()).filter(Boolean);
+  if (vip.join('\n') !== settings.vip.join('\n')) saveSettings({ vip });
+};
+vipBox.oninput = () => {
+  clearTimeout(vipTyping);
+  vipTyping = setTimeout(saveVip, 600);
+};
+// Closing the popup inside the debounce must not lose the edit.
+vipBox.onblur = saveVip;
+addEventListener('pagehide', () => vipTyping && saveVip());
+showSettings();
+
+function icon(id, className = 'icon') {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', className);
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', `#${id}`);
+  svg.append(use);
+  return svg;
+}
+
+// ponytail: drops the English " ago" ("5d ago" -> "5d") to fit the card; other locales keep their suffix.
+function ago(iso) {
+  const seconds = (Date.parse(iso) - Date.now()) / 1000;
+  const [unit, size] = UNITS.find(([, size]) => -seconds >= size) ?? [];
+  return unit ? relative.format(Math.round(seconds / size), unit).replace(/ ago$/, '') : 'now';
+}
+
+function favicon(pageUrl) {
+  const url = new URL(chrome.runtime.getURL('/_favicon/'));
+  url.searchParams.set('pageUrl', pageUrl);
+  url.searchParams.set('size', '32');
+  return url.toString();
+}
+
+const countLinks = (node) => (node.url ? 1 : node.children.reduce((sum, child) => sum + countLinks(child), 0));
+
+function collapsible({ key, className, iconId, title, children }) {
+  const details = el('details', { className, open: !collapsed.has(key) });
+  details.ontoggle = () => {
+    details.open ? collapsed.delete(key) : collapsed.add(key);
+    save('collapsed', [...collapsed]);
+  };
+  const summary = el('summary');
+  summary.append(icon(iconId), el('span', { textContent: title }));
+  details.append(summary, ...children);
+  return details;
+}
+
+function avatar(reviewer) {
+  const label = `${reviewer.login}: ${REVIEWER_LABELS[reviewer.state]}`;
+  const img = el('img', { src: reviewer.avatarUrl, alt: label, title: label });
+  img.dataset.state = reviewer.state;
+  return img;
+}
+
+function prRow(pr) {
+  const row = rowTemplate.cloneNode(true);
+  row.href = pr.url;
+  row.title = pr.title;
+  row.dataset.state = pr.review;
+  row.querySelector('.title').textContent = pr.title;
+  row.querySelector('.time').textContent = ago(pr.updatedAt);
+  row.querySelector('.state').textContent = REVIEW_LABELS[pr.review];
+  // A VIP author gets a gold star right after the name.
+  const info = row.querySelector('.info');
+  info.replaceChildren(['', `${pr.repo} #${pr.number}`, pr.author].filter((part) => part !== null).join(' · '));
+  if (isVip(pr, settings.vip)) info.append(icon('i-star', 'icon vip'));
+  info.append(pr.claude === 'reviewed' && pr.depth === 'quick' ? ' · quick review' : '', VERDICTS[pr.verdict] ? ` · ${VERDICTS[pr.verdict]}` : '', pr.auto ? ' · auto' : '');
+  row.oncontextmenu = (event) => openMenu(event, pr);
+  row.dataset.key = `${repoOf(pr)}#${pr.number}`;
+  if (snoozedUntil(pr) > Date.now()) info.append(` · snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
+
+  const [glyph = '', label = ''] = CHECKS[pr.checks] ?? [];
+  const checks = Object.assign(row.querySelector('.checks'), { textContent: glyph, title: label });
+  checks.dataset.state = pr.checks ?? '';
+
+  // ~/bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
+  const openInCmux = (depth) => (event) => {
+    event.preventDefault();
+    let url = `ccreview://${repoOf(pr)}/${pr.number}${depth ? `/${picks.model}/${picks.effort}/${depth}` : ''}`;
+    // My own PRs: ccfix runs claude-fix on the branch, ccmerge squash-merges (the opener handles both schemes).
+    if (depth === 'fix') url = `ccfix://${repoOf(pr)}/${pr.number}/${picks.model}/${picks.effort}`;
+    if (depth === 'merge') {
+      if (!confirm(`Squash-merge ${pr.repo} #${pr.number}?\n${pr.title}`)) return;
+      url = `ccmerge://${repoOf(pr)}/${pr.number}`;
+    }
+    // Nudge re-requests every pending reviewer and Mark ready leaves draft: one gh call each in the opener, then a sync shows it.
+    if (depth === 'nudge' || depth === 'ready') url = `cc${depth}://${repoOf(pr)}/${pr.number}`;
+    // ~/bin/ccreview-host (native messaging) runs the opener directly; Arc's external-URL launch was unreliable.
+    chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url }, (reply) => {
+      const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
+      if (error) alert(`Could not ${{ merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth] ?? 'start it'}:\n${error}\nIs cmux running? Then try again.`);
+      else if (depth === 'nudge' || depth === 'ready') refresh.click();
+    });
+  };
+  row.dataset.claude = pr.claude ?? '';
+  const claude = row.querySelector('.claude');
+  // The column already says running/reviewed; the badge is an icon or the word "failed". Running it opens cmux; reviewed it lets the
+  // card's link open the PR (state.json has no review id); failed it skims again, like s.
+  claude.replaceChildren(...(pr.claude === 'running' ? [icon('i-play')] : pr.claude === 'reviewed' ? [icon('i-done')] : pr.claude === 'failed' ? ['failed'] : []));
+  claude.dataset.state = pr.claude ?? '';
+  claude.title = { reviewed: 'Open the reviews on GitHub', failed: 'Review failed: skim again (s)' }[pr.claude] ?? 'Open in cmux';
+  const skim = (event) => {
+    event.preventDefault();
+    row.querySelector('.review[data-depth="quick"]')?.click();
+  };
+  claude.onclick = pr.claude === 'reviewed' ? null : pr.claude === 'failed' ? skim : openInCmux(null);
+  const actions = row.querySelector('.actions');
+  if (pr.mine) {
+    // My PR: a pill after the title when it says more than the tab (the blocker, who is awaited), the reason as the second line,
+    // the next step as a button in front of Skim / Deep (a self-check: claude-review prints the findings instead of posting them).
+    const { group, pill, reason, action } = pr.next;
+    if (pill) {
+      const tag = el('span', { className: 'pill', textContent: pill });
+      tag.dataset.group = group;
+      row.querySelector('.title').replaceChildren(el('span', { className: 'name', textContent: pr.title }), tag);
+    }
+    row.querySelector('.state').textContent = '';
+    info.textContent = `${pr.repo} #${pr.number} · ${reason}`;
+    const [label, tip] = AUTHOR_ACTIONS[action] ?? [];
+    if (label) actions.prepend(el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip }));
+    if (label) actions.firstElementChild.dataset.depth = action;
+  }
+  if (!REVIEWABLE.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
+  for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
+  if (pr.claude === 'reviewed') actions.lastElementChild.textContent = 'Again';
+
+  const avatars = row.querySelector('.avatars');
+  avatars.append(...pr.reviewers.slice(0, MAX_AVATARS).map(avatar));
+  const hidden = pr.reviewers.length - MAX_AVATARS;
+  if (hidden > 0) avatars.append(el('span', { className: 'more', textContent: `+${hidden}` }));
+  return row;
+}
+
+// The popup shows one column at a time, picked by a tab; the heading shows in the wide layout and while searching.
+// Stale rows close in a fold at the bottom, outside the count.
+function column(title, iconId, prs, group = 'inbox', stale = []) {
+  const section = el('section', { className: 'column' });
+  section.dataset.tab = title;
+  section.dataset.group = group;
+  const heading = el('h2');
+  heading.append(icon(iconId), el('span', { textContent: title }), el('span', { className: 'count', textContent: prs.length }));
+  section.append(heading, ...(prs.length ? prs.map(prRow) : [el('p', { className: 'empty', textContent: 'Nothing here' })]));
+  if (stale.length) section.append(staleFold(stale));
+  return section;
+}
+
+function staleFold(prs) {
+  const details = el('details', { className: 'stale' });
+  const summary = el('summary');
+  summary.append(el('span', { textContent: 'Stale' }), el('span', { className: 'count', textContent: prs.length }));
+  details.append(summary, ...prs.map(prRow));
+  return details;
+}
+
+// Each profile keeps its own open tab: Inbox / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
+const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'Needs me') };
+function showTab(title, group) {
+  openTab[group] = title;
+  save(group === 'mine' ? 'mineTab' : 'tab', title);
+  markActive();
+}
+// The active list is the current profile's open tab: its button pressed, its column the one the popup shows.
+function markActive() {
+  for (const button of tabsBar.children) button.setAttribute('aria-pressed', button.value === openTab[button.dataset.group]);
+  const tab = openTab[document.body.dataset.view];
+  for (const section of list.querySelectorAll('.column')) section.classList.toggle('active', section.dataset.tab === tab);
+}
+
+// Both profiles' tabs sit in the bar; the CSS shows the current profile's.
+function tabButton(title, count, group) {
+  const button = el('button', { type: 'button', value: title, onclick: () => showTab(title, group) });
+  button.dataset.group = group;
+  button.append(title);
+  if (count) {
+    const n = el('span', { className: 'n', textContent: count });
+    // Amber so a running review shows from any tab.
+    if (title === 'Running') n.dataset.live = '';
+    button.append(n);
+  }
+  return button;
+}
+
+// ~/bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto } }.
+async function reviewState() {
+  const res = await fetch(chrome.runtime.getURL('state.json'), { cache: 'no-store' }).catch(() => null);
+  return res?.ok ? res.json() : {};
+}
+
+// Review pipeline: requested PRs flow Inbox -> Running -> Reviewed by state.json; Mine splits by what each PR needs next.
+// Stale PRs (settings.staleDays) fold away in Inbox and Mine, never in Running or Reviewed; a VIP is never stale and tops the Inbox.
+function board(sections, state) {
+  const by = Object.fromEntries(sections.map((s) => [s.title, s.prs]));
+  const requested = by.Requested ?? [];
+  const all = [...new Map([...requested, ...(by['Reviewed by me'] ?? []), ...(by.Mine ?? [])].map((pr) => [pr.url, pr])).values()];
+  for (const pr of all) {
+    const entry = state[`${repoOf(pr)}#${pr.number}`];
+    pr.claude = entry?.state ?? null;
+    pr.depth = entry?.depth ?? null;
+    pr.auto = entry?.auto ?? false;
+    pr.verdict = entry?.verdict ?? null;
+  }
+  const now = Date.now();
+  // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
+  const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));
+  const inbox = requested
+    .filter((pr) => pr.claude !== 'running' && pr.claude !== 'reviewed')
+    .sort((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip));
+  const wrap = el('div', { className: 'board' });
+  wrap.append(
+    column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
+    column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
+    column('Reviewed', 'i-done', all.filter((pr) => pr.claude === 'reviewed')),
+    ...mineColumns(by.Mine ?? [], stale),
+  );
+  return wrap;
+}
+
+// Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.
+const MINE_TABS = [['needs', 'Needs me', 'i-person'], ['waiting', 'Waiting', 'i-pr'], ['ready', 'Ready', 'i-done'], ['draft', 'Drafts', 'i-pr']];
+function mineColumns(prs, stale) {
+  for (const pr of prs) Object.assign(pr, { mine: true, next: authorState(pr) });
+  prs.sort((a, b) => a.next.rank - b.next.rank || Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+  return MINE_TABS.map(([group, title, iconId]) => {
+    const rows = prs.filter((pr) => pr.next.group === group);
+    return column(title, iconId, rows.filter((pr) => !stale(pr)), 'mine', rows.filter(stale));
+  });
+}
+
+function bookmarkNode(node) {
+  if (!node.url) {
+    const children = node.children.map(bookmarkNode);
+    return collapsible({ key: node.id, className: 'folder', iconId: 'i-folder', title: node.title, children });
+  }
+  const row = el('a', { className: 'link', href: node.url, target: '_blank', title: node.title });
+  row.append(el('img', { src: favicon(node.url), alt: '' }), el('span', { textContent: node.title || node.url }));
+  return row;
+}
+
+function spaceButton(space, index, active) {
+  const button = el('button', { className: 'space', title: `${space.title} (${index + 1})` });
+  button.style.setProperty('--dot', ACCENTS[index % ACCENTS.length]);
+  button.setAttribute('aria-pressed', active);
+  button.append(el('span', { className: 'dot' }), el('span', { textContent: space.title }));
+  button.onclick = () => {
+    activeSpace = space.title;
+    save('space', activeSpace);
+    render();
+  };
+  return button;
+}
+
+async function loadSpaces() {
+  const [root] = (await chrome.bookmarks.search({ title: ROOT })).filter((b) => !b.url);
+  if (!root) return [];
+  const [tree] = await chrome.bookmarks.getSubTree(root.id);
+  return tree.children.filter((child) => !child.url);
+}
+
+function renderHeader(space, index, syncStatus) {
+  const title = space?.title ?? 'Pull requests';
+  document.documentElement.style.setProperty('--accent', ACCENTS[Math.max(index, 0) % ACCENTS.length]);
+  document.getElementById('space-title').textContent = title;
+  const links = space ? countLinks(space) : 0;
+  status.textContent = [space && `${links} ${links === 1 ? 'link' : 'links'}`, syncStatus].filter(Boolean).join(' · ');
+  // The status sits at the end of the footer, so a long sync error is cut off; the tooltip has the whole text.
+  status.title = status.textContent;
+  status.dataset.error = String(syncStatus?.startsWith('Sync failed') ?? false);
+  refresh.classList.remove('spinning');
+}
+
+async function render() {
+  const [{ sections = [], syncedAt, syncError }, spaces, state, stored] = await Promise.all([
+    chrome.storage.local.get(['sections', 'syncedAt', 'syncError']),
+    loadSpaces(),
+    reviewState(),
+    loadSettings(),
+  ]);
+  if (!settingsWrites) settings = stored;
+  save('settings', settings);
+  showSettings();
+  const syncStatus = syncError
+    ? `Sync failed: ${syncError}`
+    : syncedAt
+      ? `Synced ${new Date(syncedAt).toLocaleTimeString([], { timeStyle: 'short' })}`
+      : 'Not synced yet';
+  const index = Math.max(spaces.findIndex((s) => s.title === activeSpace), 0);
+  const space = spaces[index];
+  renderHeader(space, index, syncStatus);
+  nav.replaceChildren(...spaces.map((s, i) => spaceButton(s, i, i === index)));
+
+  // Without a Spaces folder (Arc, which has its own spaces) this is a plain PR live folder.
+  const prs = !space || PR_SPACES.includes(space.title) ? [board(sections, state)] : [];
+  const bookmarks = space ? space.children.map(bookmarkNode) : [];
+  list.replaceChildren(...prs, ...(prs.length && bookmarks.length ? [el('hr')] : []), ...bookmarks);
+  const columns = [...list.querySelectorAll('.column')];
+  // Counts leave out the folded stale rows; the switch's Mine count is Needs me.
+  const prsIn = (section) => section.querySelectorAll(':scope > .pr').length;
+  tabsBar.replaceChildren(...columns.map((section) => tabButton(section.dataset.tab, prsIn(section), section.dataset.group)));
+  const count = (tab) => prsIn(columns.find((section) => section.dataset.tab === tab) ?? el('section'));
+  counts = { inbox: count('Inbox'), mine: count('Needs me') };
+  labelSwitch();
+  if (!columns.some((section) => section.dataset.tab === openTab.inbox)) openTab.inbox = 'Inbox';
+  if (!columns.some((section) => section.dataset.tab === openTab.mine)) openTab.mine = 'Needs me';
+  markActive();
+  applyFilter();
+}
+
+// Right-click on a card: a small menu instead of the native one, the same in Arc and in Sidak's WKWebView.
+// A popover, so Esc and a click elsewhere close it; its links open like the card does.
+const menu = document.getElementById('menu');
+let menuPr;
+function openMenu(event, pr) {
+  event.preventDefault();
+  menuPr = pr;
+  menu.querySelector('[data-do="files"]').href = `${pr.url}/files`;
+  menu.querySelector('[data-do="checks"]').href = `${pr.url}/checks`;
+  menu.querySelector('[data-do="branch"]').disabled = !pr.branch;
+  menu.showPopover();
+  // Just under the pointer: on macOS the menu opens on mousedown, and a mouseup outside it would light-dismiss it at once.
+  menu.style.left = `${Math.min(event.clientX - 2, innerWidth - menu.offsetWidth - 4)}px`;
+  menu.style.top = `${Math.min(event.clientY - 2, innerHeight - menu.offsetHeight - 4)}px`;
+  // Tab and Enter work from here; closing the popover hands focus back to the card.
+  menu.querySelector('[data-do]').focus();
+}
+menu.onclick = ({ target }) => {
+  const action = target.closest('[data-do]')?.dataset.do;
+  if (!action) return;
+  menu.hidePopover();
+  if (action === 'branch' || action === 'link') copyText(action === 'branch' ? menuPr.branch : menuPr.url);
+  // The opener runs Zed on the PR's review worktree, else on the checkout.
+  if (action !== 'zed') return;
+  chrome.runtime.sendNativeMessage('com.adrian.ccreview', { url: `ccopen://${repoOf(menuPr)}/${menuPr.number}` }, (reply) => {
+    const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
+    if (error) alert(`Could not open Zed:\n${error}\nCheck that the zed CLI is installed (zed: install cli in Zed), then try again.`);
+  });
+};
+// sidak:// is no secure context, so WKWebView may lack the Clipboard API: copy from a selected textarea there.
+function copyText(text) {
+  if (navigator.clipboard) return navigator.clipboard.writeText(text).catch((error) => alert(`Could not copy:\n${error}`));
+  const box = el('textarea', { value: text });
+  document.body.append(box);
+  box.select();
+  document.execCommand('copy');
+  box.remove();
+}
+
+// Bookmark syncs fire dozens of events at once, so batch them into one render.
+let pending;
+function rerender() {
+  clearTimeout(pending);
+  pending = setTimeout(render, 50);
+}
+
+refresh.onclick = () => {
+  refresh.classList.add('spinning');
+  chrome.storage.local.set({ syncRequest: Date.now() });
+};
+// Keys: 1–9 switch spaces when there are any, else the current profile's tabs; Tab or ⌘← / ⌘→ switch Inbox / Mine; j/k move between cards,
+// d deep-reviews the focused card, s skims it; on my own card f fixes, n nudges, m merges, r marks it ready; o opens its cmux workspace,
+// Enter opens the PR (native link), x shows the stale fold, h snoozes the card for a day (again: unsnooze), R (shift) syncs.
+document.addEventListener('keydown', (event) => {
+  const editing = event.target.matches('input, select, textarea');
+  // ⌘← / ⌘→ pick a profile the way a swipe does: left the Inbox, right Mine.
+  if (event.metaKey && !editing && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+    event.preventDefault();
+    return setView(event.key === 'ArrowLeft' ? 'inbox' : 'mine');
+  }
+  if (event.metaKey || event.ctrlKey || event.altKey || editing) return;
+  const help = document.getElementById('help');
+  if (event.key === '?') return help.open ? help.close() : help.showModal();
+  if (event.key === '/') {
+    event.preventDefault();
+    return search.focus();
+  }
+  if (help.open) return;
+  if (/^[1-9]$/.test(event.key)) {
+    const tabs = [...tabsBar.children].filter((button) => button.dataset.group === document.body.dataset.view);
+    (nav.children.length ? [...nav.children] : tabs)[event.key - 1]?.click();
+    return;
+  }
+  // Visible rows without a layout read per row: the active tab's cards, or every column of the profile while searching or in the wide layout,
+  // minus closed stale folds.
+  const wide = matchMedia('(min-width: 760px)').matches || list.querySelector('.board[data-searching]');
+  const scope = wide ? `.column[data-group="${document.body.dataset.view}"]` : '.column.active';
+  const rows = [...list.querySelectorAll(`${scope} .pr:not([hidden])`)].filter((row) => !row.closest('details.stale:not([open])'));
+  const index = rows.indexOf(document.activeElement);
+  const actions = {
+    j: () => rows[Math.min(index + 1, rows.length - 1)]?.focus(),
+    k: () => rows[Math.max(index - 1, 0)]?.focus(),
+    d: () => rows[index]?.querySelector('.review[data-depth="full"]')?.click(),
+    s: () => rows[index]?.querySelector('.review[data-depth="quick"]')?.click(),
+    o: () => rows[index]?.querySelector('.claude')?.click(),
+    f: () => rows[index]?.querySelector('.review[data-depth="fix"]')?.click(),
+    n: () => rows[index]?.querySelector('.review[data-depth="nudge"]')?.click(),
+    m: () => rows[index]?.querySelector('.review[data-depth="merge"]')?.click(),
+    r: () => rows[index]?.querySelector('.review[data-depth="ready"]')?.click(),
+    x: () => list.querySelector('.column.active details.stale')?.toggleAttribute('open'),
+    h: () => toggleSnooze(rows[index]?.dataset.key),
+    R: () => refresh.click(),
+    Tab: () => setView(document.body.dataset.view === 'mine' ? 'inbox' : 'mine'),
+  };
+  if (actions[event.key]) {
+    event.preventDefault();
+    actions[event.key]();
+  }
+});
+// Profile: Inbox (reviewing, the pipeline behind the tabs) or Mine (my own PRs, blockers first), from the round switch, Tab,
+// ⌘← / ⌘→ or a sideways swipe; the header follows it. #inbox / #mine in the URL still pick one; the last profile is kept like the tab.
+const profileSwitch = document.getElementById('view');
+// 128 px for the 26 px disc on a retina screen.
+const avatarImg = el('img', { src: `https://github.com/${ME}.png?size=128`, alt: '' });
+avatarImg.onerror = () => avatarImg.remove();
+profileSwitch.querySelector('.me').append(avatarImg);
+// The badge on the switch counts the current profile's work: Inbox to review, or Needs me; none at 0.
+const viewCount = document.getElementById('view-count');
+let counts = { inbox: 0, mine: 0 };
+function labelSwitch() {
+  const [view, other, name] = document.body.dataset.view === 'mine' ? ['mine', 'inbox', 'Inbox'] : ['inbox', 'mine', 'Mine'];
+  profileSwitch.title = `Switch to ${name} (${counts[other]}) · Tab`;
+  profileSwitch.setAttribute('aria-label', `Switch to ${name}`);
+  viewCount.textContent = counts[view] || '';
+}
+function setView(view) {
+  if (view !== 'inbox' && view !== 'mine') return;
+  save('view', view);
+  // The URL carries the profile, so #inbox / #mine deep-link and the app's hash handling stays in step.
+  if (location.hash.slice(1) !== view) history.replaceState(null, '', `#${view}`);
+  document.body.dataset.view = view;
+  search.placeholder = view === 'mine' ? 'Search my pull requests' : 'Search title, #number or author';
+  labelSwitch();
+  markActive();
+}
+profileSwitch.onclick = () => setView(document.body.dataset.view === 'mine' ? 'inbox' : 'mine');
+setView(saved('view', 'inbox'));
+setView(location.hash.slice(1));
+addEventListener('hashchange', () => setView(location.hash.slice(1)));
+// Two-finger swipe, by direction like ⌘← / ⌘→: a swipe left (deltaX > 0 with natural scrolling) lands on the Inbox (reviewer),
+// a swipe right on Mine (author). One switch per gesture, so 400 ms of quiet re-arms it.
+let swipe = 0, swipeTimer, swiped = false;
+addEventListener('wheel', ({ deltaX, deltaY }) => {
+  // Trackpad wheel events come in small steps: sum the sideways travel over the gesture; 300 ms of quiet ends it.
+  clearTimeout(swipeTimer);
+  swipeTimer = setTimeout(() => { swipe = 0; swiped = false; }, 300);
+  if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
+  swipe += deltaX;
+  if (swiped || Math.abs(swipe) < 60) return;
+  swiped = true;
+  setView(swipe > 0 ? 'inbox' : 'mine');
+}, { passive: true });
+render();
+// Skip our own sync request, so the spinner keeps going until the sync result lands.
+chrome.storage.onChanged.addListener((changes) => !changes.syncRequest && rerender());
+for (const event of ['onCreated', 'onRemoved', 'onChanged', 'onMoved']) chrome.bookmarks[event].addListener(rerender);
+
+// Dev hook: opening panel.html#reload reloads the unpacked extension (manifest changes need it).
+if (location.hash === '#reload') chrome.runtime.reload();

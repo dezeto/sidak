@@ -1,0 +1,140 @@
+#!/bin/zsh
+# Reviews one PR interactively in a throwaway worktree, so you watch it work and can steer it.
+#   claude-review <pr>                    Collabocode/crm
+#   claude-review <repo> <pr>             any repo checked out at ~/Documents/_git/cc/<repo> (owner/repo also accepted)
+#   PROFILE=cc ...                        personal profile instead of work (cwc)
+#   MODEL=sonnet ...                      model override, default opus (the work profile has no Fable credits)
+#   EFFORT=medium ...                     effort override, default high
+#   DEPTH=quick ...                       AC from the diff + blocking findings only, no mutation run; default full
+#   AUTO=1 ...                            started by pr-board auto: state.json marks the run "auto": true
+set -u
+if (( $# >= 2 )); then repo=${1#*/}; n=$2; else repo=crm; n=${1:?pr number}; fi
+REPO=Collabocode/$repo
+CRM=$HOME/Documents/_git/cc/$repo
+[[ -d $CRM/.git ]] || { echo "no checkout at $CRM"; exec zsh; }
+# Per-repo memory when it exists, plus the crm rules that apply everywhere.
+CRMMEM=$HOME/.claude/projects/-Users-adrian-Documents--git-cc-crm/memory
+MEM=$HOME/.claude/projects/-Users-adrian-Documents--git-cc-$repo/memory
+[[ -f $MEM/MEMORY.md ]] || MEM=$CRMMEM
+[[ ${PROFILE:-cwc} == cwc ]] && export CLAUDE_CONFIG_DIR=$HOME/.claude-work
+wt=$CRM/.claude/worktrees/review-$n
+
+# Review state lives in the extension folder, so the panel sees it and GitHub never does.
+STATE=/Users/adrian/Documents/_git/arc-live-folders/state.json
+# The reviewer's notes for the next run on this PR; also local only.
+HANDOFF=/Users/adrian/Documents/_git/arc-live-folders/handoffs/$repo-$n.md
+mkdir -p ${HANDOFF:h}
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" <<'PY'
+import json, os, sys, time
+path, key, state, model, depth, run, auto, verdict = sys.argv[1:]
+data = json.load(open(path)) if os.path.exists(path) else {}
+# A newer run on this PR owns the entry: the old tab the opener just closed must not mark it failed.
+if data.get(key, {}).get("run", 0) > int(run): sys.exit()
+data[key] = {"state": state, "at": int(time.time() * 1000), "model": model, "depth": depth, "run": int(run)}
+# pr-board auto counts these against its daily cap and never retries one that failed.
+if auto: data[key]["auto"] = True
+# The panel and the finish notification show it; empty on a self-check, which posts nothing.
+verdict = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "COMMENTED": "commented"}.get(verdict)
+if verdict: data[key]["verdict"] = verdict
+json.dump(data, open(path, "w"))
+PY
+}
+# Closing the cmux tab kills us mid-review: settle the state from GitHub instead of leaving "running".
+# True once a review by me newer than this run exists on the PR; $verdict is the latest one's state.
+start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+started=$(date +%s)
+posted() { verdict=$(gh api "repos/$REPO/pulls/$n/reviews" --jq "[.[] | select(.user.login == \"adrianw-cc\" and .submitted_at > \"$start\")] | last | .state // \"\"" 2>/dev/null); [[ -n $verdict ]]; }
+settle() {
+  trap - HUP TERM; kill $watcher 2>/dev/null
+  # First and under nohup: the closing tab kills this trap before a slow GitHub call returns.
+  nohup git -C $CRM worktree remove --force "$wt" >/dev/null 2>&1 &
+  posted && mark reviewed || mark failed; exit 129
+}
+finish() { echo; echo "review $repo#$n finished (exit $1)"; git -C $CRM worktree remove --force "$wt" 2>/dev/null; exec zsh; }
+
+echo "== review $repo#$n (PROFILE=${PROFILE:-cwc} MODEL=${MODEL:-opus} EFFORT=${EFFORT:-high} DEPTH=${DEPTH:-full}) =="
+mark running
+trap settle HUP TERM
+# The interactive session stays open after posting, so a watcher flips the state as soon as the review lands.
+# The handoff is the reviewer's last step, so once it is written the tab closes and the HUP trap cleans up.
+handed_off() { [[ -f $HANDOFF && $(stat -f %m "$HANDOFF") -gt $started ]]; }
+close_tab() {
+  local cmux=/Applications/cmux.app/Contents/Resources/bin/cmux ref
+  export CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password)
+  # Only the opener's named workspace: a manual run in your own tab stays open.
+  ref=$($cmux workspace list 2>/dev/null | grep -E "review $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
+  [[ -n $ref ]] && $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1
+}
+( while sleep 45; do posted && { mark reviewed; break; }; done
+  # Remove the worktree before closing: the HUP trap gets killed with the tab before its own cleanup finishes.
+  until handed_off; do sleep 15; done; sleep 10; git -C $CRM worktree remove --force "$wt" 2>/dev/null; close_tab ) &
+watcher=$!
+[[ -d $wt ]] && git -C $CRM worktree remove --force "$wt"
+if ! { git -C $CRM fetch origin "pull/$n/head" && git -C $CRM worktree add --detach "$wt" FETCH_HEAD; }; then
+  mark failed; finish 1
+fi
+# Sweep what earlier tabs left behind: a review worktree whose PR is not running now is stale.
+for old in $CRM/.claude/worktrees/review-*(N); do
+  [[ $old == $wt || $(jq -r --arg k "$REPO#${old##*review-}" '.[$k].state // ""' $STATE) == running ]] && continue
+  { git -C $CRM worktree remove --force "$old" || rm -rf -- "$old"; } >/dev/null 2>&1 &
+done
+# Handoffs untouched for two weeks go; a PR open that long gets its re-review context from GitHub instead.
+rm -f -- ${HANDOFF:h}/*.md(N.m+14)
+sys=$(mktemp)
+cat "$MEM/MEMORY.md" "$CRMMEM/feedback_kent_beck_style.md" "$CRMMEM/feedback_no_claude_footer_on_issue_comments.md" > "$sys"
+cd "$wt"
+# Re-review when my earlier review is on the PR: re-check each earlier point and approve when all is settled.
+prior=$(gh api "repos/$REPO/pulls/$n/reviews" --jq '[.[] | select(.user.login == "adrianw-cc")] | length' 2>/dev/null)
+if (( ${prior:-0} > 0 )); then
+  rereview="This is a re-review: your earlier review is already on the PR. For every point you raised before, check the current code and the author's replies and classify it: addressed, still open, or declined with a reason you accept. Put that in a table | Earlier point | Status | Evidence | right after the opening line, before the AC section. Rerun the AC table against the current code."
+  event="APPROVE when every earlier point is addressed or acceptably declined and every AC is met, otherwise REQUEST_CHANGES"
+else
+  rereview=""
+  event="REQUEST_CHANGES when any AC the PR claims to cover is not fully met, APPROVE when nothing needs a comment (see the deciding factor below), otherwise COMMENT"
+fi
+handoff_in=""
+[[ -f $HANDOFF ]] && handoff_in="Your handoff from the previous review of this PR is at $HANDOFF. Read it before anything else: it records the commit you reviewed, the AC verdicts, every point you raised, and what you checked and found fine. Start from git diff <that commit>..HEAD and the earlier points; recheck what it says was fine only where the diff touched it."
+# Quick reads the diff and flags only what blocks; full proves each AC with a test and runs the mutations.
+if [[ ${DEPTH:-full} == quick ]]; then
+  sections='2. **AC (#<issue>).** The gate. Quote every acceptance criterion from the issue, one per row: | AC | Verdict | Evidence |. Verdict is met / partly met / not met / out of scope (stated by the PR). Evidence is a file:line in the diff. This is a quick review: judge from reading the code and do not run tests. A claim in the PR description is not evidence; "partly met" blocks the same as "not met". When a flag is involved, check the code for both flag values. When an AC is ambiguous, say what reading you applied.
+3. **Inline comments**: a numbered one-line summary per inline comment, most important first.'
+  findings='Inline comments only for blocking problems, at most five: AC gaps first (say which AC they fail), then bugs. Each states the finding, the evidence (the code path, the call sites), and a concrete fix, with code when a snippet makes it shorter. No style or maintainability comments, no Kent Beck section. Never praise.'
+else
+  sections='2. **AC (#<issue>).** The gate. Quote every acceptance criterion from the issue, one per row: | AC | Verdict | Evidence |. Verdict is met / partly met / not met / out of scope (stated by the PR). Evidence is a file:line in the diff plus the test that proves it, or "no test". Be stingy: an AC counts as met only when the code does exactly what the AC says and a test exercises it; a claim in the PR description is not evidence; "partly met" blocks the same as "not met". When a flag is involved, both flag values must be checked. When an AC is ambiguous, say what reading you applied.
+3. **Mutation run.** Change each line of the diff in turn and rerun the touched test suites. Report a table | Mutated | Result | with killed / survived (and which suite killed it). Say which suites you ran and whether HEAD is green. On a re-review the mutation run may be limited to lines changed since your last review.
+4. **Inline comments**: a numbered one-line summary per inline comment, most important first.
+5. **Kent Beck check.** Only when it adds something no other review on the PR already says; two or three sentences at most, advisory, never blocking. Otherwise omit the section.'
+  findings='Inline comments on AC gaps come first and say which AC they fail. Each inline comment states the finding, the evidence (the mutation that survived, the missing test, the call sites), and a concrete fix, with code when a snippet makes it shorter. Never praise. Mark style and maintainability items non-blocking.'
+fi
+prompt=$(cat <<EOF
+Please review PR #$n in $REPO. The acceptance criteria of the linked issue are the gate; maintainability and Kent Beck style are advisory. The PR branch is checked out in this directory; use gh pr view and gh issue view for the description and AC. Your memory files live in $MEM; read any whose index line looks relevant to this PR.
+
+$rereview
+
+$handoff_in
+
+Before writing anything, read what is already on the PR: gh api repos/$REPO/pulls/$n/comments, repos/$REPO/pulls/$n/reviews and repos/$REPO/issues/$n/comments. Skip every point another person or bot already raised, even partly; add only new angles. Points raised by your own earlier review (author adrianw-cc) are not repeated either; their status goes in the re-review table. Do this check silently: the review must never say that it was done or what it skipped.
+
+Post one GitHub pull request review via gh api repos/$REPO/pulls/$n/reviews, event $event, with a comments array of {path, line, side: RIGHT, body} anchored to lines in the PR diff (start_line for a range; line numbers from the diff, not the file). Not an issue comment. No generated-with footer.
+
+Deciding factor: when every AC is met (and, on a re-review, every earlier point is addressed or acceptably declined) and you have nothing to comment, no inline comment blocking or not and no point the other reviews have not already made, post only an approval: event APPROVE with no body and no comments array. The AC table and everything else you checked still go in the handoff.
+
+Otherwise the review body, in this order:
+1. One line: "Review of \`<short sha>\`." (or "Re-review of \`<short sha>\`." followed by what changed since your last review), then the verdict ("Nothing blocking." or what blocks), then "The findings are inline, starting with the most important."
+$sections
+
+$findings
+
+Once the review is posted, write the handoff to $HANDOFF, replacing what is there. It is private notes for whoever reviews this PR next, never posted: the full sha you reviewed and the depth (${DEPTH:-full}); the AC table with verdicts; every point you raised, inline or in the body, with path:line, the fix you expect, and whether it blocks; what you checked and found fine; what you chose not to flag and why; open questions. Writing the handoff is your last step: this session closes automatically shortly after.
+EOF
+)
+# My own PR (Skim / Deep from the panel's Mine profile): the same checks as a self-check, printed here instead of posted.
+[[ $(gh pr view $n -R $REPO --json author --jq .author.login 2>/dev/null) == adrianw-cc ]] &&
+  prompt+=$'\n\nThis is my own PR. Do not post a GitHub review or any comment. Run the same checks and print the findings here in the terminal, ordered by severity, with file:line, then stop.'
+claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
+rc=$?
+kill $watcher 2>/dev/null
+rm -f "$sys"; cd $CRM
+# posted first: it sets $verdict even when claude exited 0.
+if posted || [[ $rc == 0 ]]; then mark reviewed; else mark failed; fi
+finish $rc

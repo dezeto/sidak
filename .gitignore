@@ -1,0 +1,7 @@
+# Live data and secrets: this tool keeps its state next to the code.
+token.txt
+state.json
+settings.json
+handoffs/
+.DS_Store
+*.bak

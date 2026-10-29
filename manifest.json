@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Sidak",
+  "version": "1.4",
+  "description": "Your open GitHub PRs with review and CI status, as a popup list (Arc copy of the Helium Spaces extension).",
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "permissions": [
+    "bookmarks",
+    "alarms",
+    "storage",
+    "favicon",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://api.github.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "GitHub PRs",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png"
+    },
+    "default_popup": "panel.html"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "MacCtrl+Shift+P"
+      },
+      "description": "Open the GitHub PRs list"
+    }
+  }
+}

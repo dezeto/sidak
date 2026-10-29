@@ -1,0 +1,135 @@
+#!/bin/zsh
+# The PR review board for the phone: the same reviews as the Arc panel, driven from a Remote Control session.
+#   pr-board board                          To review / Running / Reviewed
+#   pr-board auto                           one auto-review tick (Sidak.app runs it every 120 s); DRY=1 prints the URL only
+#   pr-board quick|review [<repo>] <pr>     start a review in cmux (repo defaults to crm)
+#   pr-board status [<repo>] <pr>           run state + my latest review on the PR
+#   pr-board wait [<repo>] <pr>             block until the running review settles, then status
+#   pr-board approve [<repo>] <pr> [note]   approve the PR head
+#   pr-board phone                          start the Remote Control session on the personal account (the phone's)
+#   MODEL=sonnet EFFORT=high ...            review overrides; default opus, medium for quick and high for review
+set -u
+# SIDAK_STATE / SIDAK_SETTINGS point at copies for a dry run.
+STATE=${SIDAK_STATE:-/Users/adrian/Documents/_git/arc-live-folders/state.json}
+SETTINGS=${SIDAK_SETTINGS:-/Users/adrian/Documents/_git/arc-live-folders/settings.json}
+ME=adrianw-cc
+cmd=${1:-board}; shift 2>/dev/null
+if [[ ${1:-} == <-> ]]; then repo=crm; else repo=${1:-crm}; shift 2>/dev/null; fi
+n=${1:-}; note=${2:-}
+key=Collabocode/$repo#$n
+entry() { jq -r --arg k "$key" ".[\$k].$1 // \"\"" $STATE; }
+
+board() {
+  local s=$(<$STATE)
+  # The panel's stale cut-off (settings.json staleDays, default 30, 0 = off) keeps the menu bar count in step with its Inbox.
+  local days=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("staleDays", 30)))' $SETTINGS 2>/dev/null || print 30)
+  # Filtered here, not with --updated, so VIP authors (settings.json vip, logins only) still count when stale, as in the panel.
+  local cutoff=$(( days > 0 ? ($(date +%s) - days * 86400) * 1000 : 0 ))
+  local vip=$(jq -c '.vip // []' $SETTINGS 2>/dev/null || print '[]')
+  # Snoozed PRs (settings.json snooze, h in the panel) stay out of the count until their time.
+  local snooze=$(jq -c --argjson now $(( $(date +%s) * 1000 )) '(.snooze // {}) | with_entries(select(.value > $now))' $SETTINGS 2>/dev/null || print '{}')
+  print "To review"
+  gh search prs --review-requested=@me --state=open --archived=false --json repository,number,title,author,updatedAt --limit 50 |
+    jq -r --argjson s "$s" --argjson z "$snooze" --argjson cutoff $cutoff --argjson vip "$vip" '.[] | (.repository.nameWithOwner + "#" + (.number | tostring)) as $k | ($s[$k].state // "") as $st
+      | select($st != "running" and $st != "reviewed" and ($z[$k] | not))
+      | select((.updatedAt | sub("\\.[0-9]+"; "") | fromdateiso8601 * 1000) > $cutoff or ([.author.login] | inside($vip)))
+      | "  \(.repository.name)#\(.number) \(.title) (\(.author.login))\(if $st == "failed" then " [failed]" else "" end)"'
+  print "Running"
+  jq -r 'to_entries[] | select(.value.state == "running") | "  \(.key | ltrimstr("Collabocode/")) [\(.value.depth // "full")]"' $STATE
+  print "Reviewed"
+  gh search prs --reviewed-by=@me --state=open --archived=false --json repository,number,title --limit 50 |
+    jq -r --argjson s "$s" '.[] | $s[.repository.nameWithOwner + "#" + (.number | tostring)] as $e | select($e.state == "reviewed")
+      | "  \(.repository.name)#\(.number) \(.title) [\($e.depth // "full")]"'
+}
+
+# The opener runs outside the Arc host here, so it needs the cmux socket password itself.
+start() {
+  local before=$(entry at)
+  local depth=full effort=${EFFORT:-high}
+  [[ $cmd == quick ]] && { depth=quick; effort=${EFFORT:-medium}; }
+  CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) \
+    ~/bin/claude-review-open "ccreview://Collabocode/$repo/$n/${MODEL:-opus}/$effort/$depth" >/dev/null || { print "could not open cmux"; return 1; }
+  # Started once the script has marked a new run; it needs a few seconds to boot.
+  repeat 15; do
+    [[ $(entry state) == running && $(entry at) != $before ]] && { print "started $repo#$n ($depth, ${MODEL:-opus}/$effort)"; return; }
+    sleep 2
+  done
+  print "the review of $repo#$n did not start; check the cmux workspace"; return 1
+}
+
+# While settings.json auto.on, start a quick review of the next Inbox PR in a cmux workspace that does not take focus, with the
+# panel's model and effort: VIPs first, then the oldest request; one run at a time, at most 10 auto runs a day. A PR with a state.json
+# entry is never started again, unless it is a manual run that failed. The one output line starts with "auto on" while the mode is on.
+auto() {
+  local line=$(python3 - $SETTINGS $STATE <<'PY'
+import datetime, json, os, re, subprocess, sys, time
+settings_path, state_path = sys.argv[1:]
+settings = json.load(open(settings_path))
+if not settings.get("auto", {}).get("on"): sys.exit(print("auto off"))
+if subprocess.run(["pgrep", "-x", "cmux"], capture_output=True).returncode: sys.exit(print("auto on (no cmux)"))
+state = json.load(open(state_path))
+now = time.time()
+# Still "running" after 2 h is a tab that died without settling; it does not hold the queue.
+if any(e.get("state") == "running" and now - e.get("at", 0) / 1000 < 7200 for e in state.values()): sys.exit(print("auto on (busy)"))
+midnight = datetime.datetime.combine(datetime.date.today(), datetime.time()).timestamp()
+if sum(e.get("auto", False) and e.get("run", 0) >= midnight for e in state.values()) >= 10: sys.exit(print("auto on (cap)"))
+# The Inbox's rules: REVIEWABLE from panel.js, stale and VIP like pr.js (a VIP is never stale). VIP by login only: the search has no commit email.
+panel = open("/Users/adrian/Documents/_git/arc-live-folders/panel.js").read()
+reviewable = json.loads(re.search(r"const REVIEWABLE = (\[.*?\]);", panel).group(1).replace("'", '"'))
+vip = {entry.lower() for entry in settings.get("vip", [])}
+days = int(settings.get("staleDays", 30))
+search = subprocess.run(["gh", "search", "prs", "--review-requested=@me", "--state=open", "--archived=false", "--sort", "created", "--order", "asc",
+                         "--limit", "50", "--json", "repository,number,isDraft,author,updatedAt"], capture_output=True, text=True)
+if search.returncode: sys.exit(print("auto on (gh failed)"))
+def is_vip(pr): return (pr["author"] or {}).get("login", "").lower() in vip
+def stale(pr): return days > 0 and not is_vip(pr) and now - datetime.datetime.fromisoformat(pr["updatedAt"].replace("Z", "+00:00")).timestamp() > days * 86400
+snooze = settings.get("snooze", {})
+def done(pr):
+    key = f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}'
+    if snooze.get(key, 0) > now * 1000: return True  # snoozed in the panel (h): not today
+    entry = state.get(key)
+    return entry is not None and not (entry.get("state") == "failed" and not entry.get("auto"))
+# claude-review without a checkout exits before marking, so such a PR would reopen every tick.
+def checked_out(repo): return os.path.isdir(os.path.expanduser(f"~/Documents/_git/cc/{repo}/.git"))
+todo = [pr for pr in json.loads(search.stdout) if pr["repository"]["nameWithOwner"].startswith("Collabocode/") and pr["repository"]["name"] in reviewable
+        and not pr["isDraft"] and not stale(pr) and not done(pr) and checked_out(pr["repository"]["name"])]
+todo.sort(key=lambda pr: not is_vip(pr))  # stable: oldest first within VIPs and the rest
+if not todo: sys.exit(print("auto on (nothing to review)"))
+repo, n = todo[0]["repository"]["name"], todo[0]["number"]
+print(f'ccreview://Collabocode/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/quick {repo}#{n}')
+PY
+)
+  [[ $line == ccreview://* ]] || { print -r -- "${line:-auto error}"; return; }
+  local url=${line% *} pr=${line##* }
+  [[ -n ${DRY:-} ]] && { print "auto on dry-run $url"; return; }
+  AUTO=1 FOCUS=false CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) \
+    ~/bin/claude-review-open "$url" >/dev/null 2>&1 || { print "auto on (could not open cmux for $pr)"; return 1; }
+  print "auto on started $pr"
+}
+
+status() {
+  print "run: $(entry state) $(entry depth)"
+  gh api repos/Collabocode/$repo/pulls/$n/reviews --jq "[.[] | select(.user.login == \"$ME\")] | last
+    | if . then \"my review: \(.state) \(.submitted_at)\n\(.body)\" else \"my review: none yet\" end"
+  gh pr view $n -R Collabocode/$repo --json reviewDecision,url --jq '"decision: \(.reviewDecision) \(.url)"'
+  local handoff=/Users/adrian/Documents/_git/arc-live-folders/handoffs/$repo-$n.md
+  [[ -f $handoff ]] && print "handoff: $handoff"
+}
+
+case $cmd in
+  board) board ;;
+  auto) auto ;;
+  quick|review) start ;;
+  status) status ;;
+  wait) while [[ $(entry state) == running ]]; do sleep 30; done; status ;;
+  approve)
+    gh api repos/Collabocode/$repo/pulls/$n/reviews -f event=APPROVE -f body="$note" \
+      -f commit_id=$(gh pr view $n -R Collabocode/$repo --json headRefOid --jq .headRefOid) --jq '"approved \(.commit_id[0:10])"' ;;
+  phone)
+    # Personal profile: Remote Control sessions only show in the app logged into the same account.
+    unset CLAUDE_CONFIG_DIR
+    cd ~/Documents/_git/cc/crm
+    exec claude --remote-control "Sidak" --model sonnet --allowedTools "Bash(/Users/adrian/bin/pr-board *)" --append-system-prompt "You are the PR review board, driven from the user's phone. Every request maps to one /Users/adrian/bin/pr-board command; run /Users/adrian/bin/pr-board help for the list. After starting a review, run pr-board wait for it in the background and report when it settles: verdict, the blocking points in one line each. Approve only when the user says so in this conversation. Reply in short lines for a phone screen, no wide tables." ;;
+  help) sed -n '3,10p' $0 ;;
+  *) sed -n '3,10p' $0; exit 2 ;;
+esac
