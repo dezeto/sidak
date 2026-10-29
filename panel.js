@@ -551,7 +551,6 @@ async function render() {
   const total = toReview + running + reviewed;
   heroBox.replaceChildren(...(prs.length ? [
     hero('inbox', total ? `${reviewed} of ${total} reviewed` : 'Nothing to review', running ? `${running} running` : '', [[reviewed, 'reviewed', 'green'], [running, 'running', 'amber'], [toReview, 'to review', 'dim']]),
-    hero('mine', needs ? `${needs} need${needs === 1 ? 's' : ''} me` : 'Nothing needs me', waiting ? `${waiting} waiting` : '', [[ready, 'ready', 'green'], [waiting, 'waiting', 'blue'], [needs, 'need me', 'red'], [drafts, 'in draft', 'dim']]),
   ] : []));
   labelSwitch();
   if (!columns.some((section) => section.dataset.tab === openTab.inbox)) openTab.inbox = 'Inbox';

@@ -172,7 +172,7 @@
   .gauge [data-tone='blue'] { --tone: linear-gradient(#7ba6f5, #5b8def); }
   .gauge [data-tone='red'] { --tone: linear-gradient(#ee6a64, #e0443e); }
   .gauge [data-tone='dim'] { --tone: var(--dot-dim); box-shadow: none; }
-  body[data-view='mine'] .hero[data-group='inbox'], body:not([data-view='mine']) .hero[data-group='mine'] { display: none; }
+  body[data-view='mine'] #hero { display: none; }
 
   @media (max-width: 759px) {
     /* One list at a time: the current profile's open tab (panel.js marks it .active), and under Inbox the Running list (.also) when it has rows. */
