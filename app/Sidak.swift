@@ -5,6 +5,7 @@ import WebKit
 import Carbon.HIToolbox
 import UserNotifications
 import ServiceManagement
+import Network
 
 // ⌃⌥P opens or closes the board from anywhere (a Carbon hot key needs no accessibility permission).
 var hotKeyRef: EventHotKeyRef?
@@ -80,6 +81,12 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     counts()
     schedulePoll()
     installHotKey(self)
+    if let data = try? Data(contentsOf: dir.appendingPathComponent("config.json")),
+       let r = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["remote"] as? [String: Any] {
+      let port = UInt16(r["port"] as? Int ?? 8787)
+      serve(port: port)
+      runTunnel(r, port: port)
+    }
     // Launch at login so the gauge is always up; switch it off in System Settings > General > Login Items.
     if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
   }
@@ -331,7 +338,11 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     let minutes = settings?["pollMinutes"] as? Int ?? 2
     let interval = TimeInterval([1, 2, 5, 10].contains(minutes) ? minutes : 2) * 60
     pollTimer?.invalidate()
-    pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in self.counts() }
+    // With the phone on, the poll also syncs the app's page: WebKit pauses its own 5-minute alarm while the panel is closed.
+    pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
+      self.counts()
+      if self.listener != nil { self.web.evaluateJavaScript("sync()") }
+    }
     NSLog("poll every %.0f s", interval)
   }
 
@@ -407,27 +418,137 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       // Settings, nudges and mark-ready run in place; only the cmux openers close the unpinned panel and bring cmux forward.
       let inPlace = ["ccset:", "ccnudge:", "ccready:", "ccopen:"].contains { url.hasPrefix($0) }
       if !inPlace && !pinned { panel.orderOut(nil) }
-      DispatchQueue.global().async {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.currentDirectoryURL = dir
-        p.arguments = ["-c", "CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) bin/claude-review-open \"$1\" && { [ -n \"$2\" ] || osascript -e 'tell application \"cmux\" to activate'; }", "_", url, inPlace ? "1" : ""]
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = out
-        try? p.run()
-        p.waitUntilExit()
-        let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        DispatchQueue.main.async {
-          replyHandler(["ok": p.terminationStatus == 0, "error": text], nil)
-          // A settings change (auto on/off, stale cut-off, poll interval) redraws the gauge now and restarts the poll timer.
-          if url.hasPrefix("ccset:") { self.counts(); self.schedulePoll() }
-        }
-      }
+      act(url, front: !inPlace) { ok, text in replyHandler(["ok": ok, "error": text], nil) }
     default:
       replyHandler(nil, "unknown message \(kind)")
     }
   }
+
+  // Runs one board action through bin/claude-review-open, as the Arc native host does; front brings cmux forward after.
+  func act(_ url: String, front: Bool, done: @escaping (Bool, String) -> Void) {
+    DispatchQueue.global().async {
+      let p = Process()
+      p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+      p.currentDirectoryURL = dir
+      p.arguments = ["-c", "CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) bin/claude-review-open \"$1\" && { [ -z \"$2\" ] || osascript -e 'tell application \"cmux\" to activate'; }", "_", url, front ? "1" : ""]
+      let out = Pipe()
+      p.standardOutput = out
+      p.standardError = out
+      try? p.run()
+      p.waitUntilExit()
+      let text = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+      DispatchQueue.main.async {
+        done(p.terminationStatus == 0, text)
+        // A settings change (auto on/off, stale cut-off, poll interval) redraws the gauge now and restarts the poll timer.
+        if url.hasPrefix("ccset:") { self.counts(); self.schedulePoll() }
+      }
+    }
+  }
+
+  // Phone access, on when config.json has "remote": the board over 127.0.0.1:<port>, which only cloudflared reaches, and cloudflared
+  // only with a valid Cloudflare Access login. GET serves the page with app/remote.js, its files and the board's lists; POST /act runs
+  // an action like a tap on the board. Nothing else in the repo is served: token.txt and handoffs/ never leave the Mac.
+  var listener: NWListener?
+  let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "settings.json", "config.json"]
+  // Every action the board sends, minus Zed (it opens on the Mac's screen); sidaksync: is the phone's refresh button.
+  let remoteActions = ["ccreview:", "ccfix:", "ccmerge:", "ccnudge:", "ccready:", "ccset:", "sidaksync:"]
+  func serve(port: UInt16) {
+    let params = NWParameters.tcp
+    params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: port)!)
+    guard let l = try? NWListener(using: params) else { NSLog("remote: no listener on %d", port); return }
+    l.newConnectionHandler = { c in c.start(queue: .main); self.read(c, Data()) }
+    l.stateUpdateHandler = { NSLog("remote: %@", "\($0)") }
+    l.start(queue: .main)
+    listener = l
+  }
+  // One request per connection: the head, then Content-Length bytes of body.
+  func read(_ c: NWConnection, _ buf: Data) {
+    c.receive(minimumIncompleteLength: 1, maximumLength: 65536) { data, _, done, error in
+      let buf = buf + (data ?? Data())
+      let more = { if done || error != nil || buf.count > 1 << 20 { c.cancel() } else { self.read(c, buf) } }
+      guard let end = buf.range(of: Data("\r\n\r\n".utf8)) else { return more() }
+      let lines = String(decoding: buf[..<end.lowerBound], as: UTF8.self).components(separatedBy: "\r\n")
+      var headers: [String: String] = [:]
+      for line in lines.dropFirst() {
+        let kv = line.split(separator: ":", maxSplits: 1)
+        if kv.count == 2 { headers[kv[0].lowercased()] = kv[1].trimmingCharacters(in: .whitespaces) }
+      }
+      let body = buf[end.upperBound...]
+      guard body.count >= Int(headers["content-length"] ?? "0") ?? 0 else { return more() }
+      let request = lines[0].split(separator: " ")
+      let path = request.count > 1 ? String(request[1].split(separator: "?").first ?? "/") : "/"
+      self.respond(c, String(request.first ?? ""), path, headers, Data(body))
+    }
+  }
+  func respond(_ c: NWConnection, _ method: String, _ path: String, _ headers: [String: String], _ body: Data) {
+    let file = String(path.dropFirst())
+    switch (method, path) {
+    case ("GET", "/"), ("GET", "/panel.html"):
+      // The page as the app loads it, with remote.js standing in for chrome.* and a phone-width viewport.
+      let html = (try? String(contentsOf: dir.appendingPathComponent("panel.html"), encoding: .utf8)) ?? ""
+      let head = "<meta charset=\"utf-8\" />\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n<script src=\"app/remote.js\"></script>"
+      send(c, 200, "text/html", Data(html.replacingOccurrences(of: "<meta charset=\"utf-8\" />", with: head).utf8))
+    case ("GET", "/storage.json"):
+      // The app page's chrome.storage (shim.js keeps it in localStorage under s:): the PR lists and when they synced.
+      web.evaluateJavaScript("JSON.stringify(Object.fromEntries(Object.keys(localStorage).filter((k) => k.startsWith('s:')).map((k) => [k.slice(2), JSON.parse(localStorage[k])])))") { out, _ in
+        self.send(c, 200, "application/json", Data((out as? String ?? "{}").utf8))
+      }
+    case ("POST", "/act"):
+      // Only the page sends X-Sidak: another site posting through the logged-in phone browser can't set it without a CORS preflight,
+      // and preflights get no answer here.
+      guard headers["x-sidak"] == "1", let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+            let url = json["url"] as? String, remoteActions.contains(where: url.hasPrefix) else { return send(c, 403, "text/plain", Data("forbidden".utf8)) }
+      NSLog("remote: %@", url)
+      let reply = { (ok: Bool, text: String) in
+        self.send(c, 200, "application/json", (try? JSONSerialization.data(withJSONObject: ["ok": ok, "error": text])) ?? Data())
+      }
+      // Refresh: one sync in the app's page, answered when its lists are written.
+      if url.hasPrefix("sidaksync:") {
+        web.callAsyncJavaScript("sync(); await queue", arguments: [:], in: nil, in: .page) { _ in reply(true, "") }
+      } else {
+        act(url, front: false, done: reply)
+      }
+    case ("GET", _) where served.contains(file):
+      let types = ["js": "text/javascript", "json": "application/json", "css": "text/css"]
+      let data = (try? Data(contentsOf: dir.appendingPathComponent(file))) ?? Data("{}".utf8)
+      send(c, 200, types[(file as NSString).pathExtension] ?? "text/plain", data)
+    default:
+      send(c, 404, "text/plain", Data("not found".utf8))
+    }
+  }
+  func send(_ c: NWConnection, _ status: Int, _ type: String, _ data: Data) {
+    let head = "HTTP/1.1 \(status) \(status == 200 ? "OK" : "No")\r\nContent-Type: \(type); charset=utf-8\r\nContent-Length: \(data.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+    c.send(content: Data(head.utf8) + data, completion: .contentProcessed { _ in c.cancel() })
+  }
+
+  // cloudflared for the phone, only once config.json names the Access team and app (remote.team, remote.aud): it checks that login on
+  // every request before passing it on. A killed app leaves its cloudflared behind, so a launch stops any old one first.
+  var tunnel: Process?
+  let tunnelConfig = NSTemporaryDirectory() + "sidak-tunnel.yml"
+  func runTunnel(_ r: [String: Any], port: UInt16) {
+    if tunnel == nil { let k = Process(); k.executableURL = URL(fileURLWithPath: "/usr/bin/pkill"); k.arguments = ["-f", tunnelConfig]; try? k.run(); k.waitUntilExit() }
+    guard let team = r["team"] as? String, !team.isEmpty, let aud = r["aud"] as? String, !aud.isEmpty, let host = r["hostname"] as? String,
+          let bin = ["/opt/homebrew/bin/cloudflared", "/usr/local/bin/cloudflared"].first(where: FileManager.default.isExecutableFile) else {
+      NSLog("remote: tunnel off (needs remote.hostname, team, aud and cloudflared)"); return
+    }
+    let name = r["tunnel"] as? String ?? "sidak"
+    let yml = """
+      ingress:
+        - hostname: \(host)
+          service: http://127.0.0.1:\(port)
+          originRequest:
+            access: { required: true, teamName: \(team), audTag: [\(aud)] }
+        - service: http_status:404
+
+      """
+    try? yml.write(toFile: tunnelConfig, atomically: true, encoding: .utf8)
+    let p = Process()
+    p.executableURL = URL(fileURLWithPath: bin)
+    p.arguments = ["tunnel", "--no-autoupdate", "--logfile", NSHomeDirectory() + "/Library/Logs/Sidak-tunnel.log", "--config", tunnelConfig, "run", name]
+    p.terminationHandler = { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.runTunnel(r, port: port) } }
+    do { try p.run(); tunnel = p } catch { NSLog("remote: cloudflared: %@", error.localizedDescription) }
+  }
+  func applicationWillTerminate(_ n: Notification) { tunnel?.terminationHandler = nil; tunnel?.terminate() }
 
   // Links on cards are target=_blank, and any http(s) navigation belongs in the browser, not the panel.
   func webView(_ w: WKWebView, createWebViewWith c: WKWebViewConfiguration, for a: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {

@@ -48,6 +48,14 @@
   :root[data-app], :root[data-app] body { background: transparent; }
   :root[data-app] body { min-height: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
   @media (prefers-contrast: more) { :root[data-app] body { background: var(--lg-bg-primary); } }
+  /* Phone (app/remote.js): the screen's width, card actions without hover, no key hints, no Zed (it opens at the Mac) and no iOS link
+     preview on the long press that opens the card menu. */
+  :root[data-remote] body { width: auto; }
+  :root[data-remote] .pr .actions { display: flex; }
+  :root[data-remote] .pr:has(.actions) :is(.avatars, .time) { display: none; }
+  :root[data-remote] .pr:has(.actions > :nth-child(3)) .pill { display: none; }
+  :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
+  :root[data-remote] #list { -webkit-touch-callout: none; }
   button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }
   a, summary, button { -webkit-tap-highlight-color: transparent; }
   :focus-visible { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }

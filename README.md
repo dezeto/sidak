@@ -68,5 +68,21 @@ extension and put its id in `config.json`, and set the cmux socket password.
 - `rulesRepo`: a repo whose Claude memory every review loads, or `""`.
 - `profiles`, `defaultProfile`: Claude profile name to `CLAUDE_CONFIG_DIR` (`""` is the default `~/.claude`).
 - `extensionId`: the unpacked extension's id, for the native-messaging host.
+- `remote` (optional): phone access, see below.
 
 `node check.js` is the self-test; it prints `ok`.
+
+## Phone
+
+The board works from a phone through a Cloudflare Tunnel, actions included: a tap does what a click does, and reviews still open in
+cmux on the Mac. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
+valid Cloudflare Access login.
+
+1. In Cloudflare Zero Trust, add a self-hosted Access application for your hostname with an Allow policy for your email.
+2. Add to `config.json`, with the team name (`<team>.cloudflareaccess.com`) and the app's Application Audience (AUD) tag:
+   ```json
+   "remote": { "hostname": "sidak.example.dev", "port": 8787, "tunnel": "sidak", "team": "<team>", "aud": "<aud tag>" }
+   ```
+3. Run `./install.sh`: it creates the tunnel and its DNS record, and Sidak.app restarts with the tunnel up.
+
+Without `team` and `aud` the server runs but the tunnel stays off. The tunnel log is `~/Library/Logs/Sidak-tunnel.log`.

@@ -35,6 +35,19 @@ done
 # 5. The menu-bar app.
 app/build.sh
 
+# 6. Phone access, only with a "remote" block in config.json: the tunnel, then its DNS record once the Cloudflare Access app
+#    exists (remote.team, remote.aud), so the address never answers without that login. Sidak.app runs cloudflared itself.
+host=$(jq -r '.remote.hostname // empty' config.json)
+if [[ -n $host ]] && (( $+commands[cloudflared] )); then
+  name=$(jq -r '.remote.tunnel // "sidak"' config.json)
+  cloudflared tunnel info $name >/dev/null 2>&1 || cloudflared tunnel create $name
+  if [[ -n $(jq -r '.remote.aud // empty' config.json) && -n $(jq -r '.remote.team // empty' config.json) ]]; then
+    cloudflared tunnel route dns $name $host || print "DNS for $host not changed: delete its old record in Cloudflare, then run ./install.sh again."
+  else
+    print "Phone: create the Access app for $host, put remote.team and remote.aud in config.json, run ./install.sh again."
+  fi
+fi
+
 print "
 Next:
   1. Load this folder as an unpacked extension (chrome://extensions, Developer mode, Load unpacked),
