@@ -450,14 +450,15 @@ function board(sections, state) {
   const by = Object.fromEntries(sections.map((s) => [s.title, s.prs]));
   const requested = by.Requested ?? [];
   const all = [...new Map([...requested, ...(by['Reviewed by me'] ?? []), ...(by.Mine ?? [])].map((pr) => [pr.url, pr])).values()];
+  const now = Date.now();
   for (const pr of all) {
     const entry = state[`${repoOf(pr)}#${pr.number}`];
-    pr.claude = entry?.state ?? null;
+    // Still "running" after 2 h is a tab that died without settling (Sidak.app and pr-board auto skip it too): failed, so it skims again.
+    pr.claude = entry?.state === 'running' && now - entry.at > 2 * 3600 * 1000 ? 'failed' : (entry?.state ?? null);
     pr.depth = entry?.depth ?? null;
     pr.auto = entry?.auto ?? false;
     pr.verdict = entry?.verdict ?? null;
   }
-  const now = Date.now();
   // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
   const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));
   const inbox = requested
