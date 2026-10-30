@@ -20,13 +20,15 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 
 ## What you get
 
-- **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (Needs me, Waiting, Ready, Drafts) with
+- **Inbox, Updated, Running, Reviewed** tabs, and a second profile for your own PRs (Needs me, Waiting, Ready, Drafts) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
-- **TL;DR on every Reviewed card**: what the PR does, what the review found, and what you do next.
+- **Updated** tab: a reviewed PR comes back when its author pushes after your review or re-requests you; Reviewed keeps the
+  ones waiting on their author. Each card shows what to do next, and a tap opens the review's TL;DR (what the PR does, what it found).
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
-- **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, at most ten a day.
+- **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each Updated PR once it
+  has been quiet for an hour; at most ten a day.
 - **Stale** PRs folded away, **VIP** authors pinned, **snooze** a card for a day, right-click for Open in Zed, Copy
   branch, Files changed, Checks, Copy link.
 - Reviews stay silent for everyone else: no labels, no comments beyond the review itself.

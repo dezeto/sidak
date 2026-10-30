@@ -61,7 +61,8 @@ start() {
 
 # While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
 # model and effort: VIPs first, then the oldest request; at most 10 auto runs a day. A PR with a state.json entry is never started
-# again, unless it is a manual run that failed. The one output line starts with "auto on" while the mode is on.
+# again, unless it is a manual run that failed, or a follow-up: one I reviewed whose author pushed or re-requested me since (pr.js
+# followUp), re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
 auto() {
   local line=$(python3 - $SETTINGS $STATE $SIDAK_DIR/config.json <<'PY'
 import datetime, json, os, subprocess, sys, time
@@ -84,15 +85,37 @@ if search.returncode: sys.exit(print("auto on (gh failed)"))
 def is_vip(pr): return (pr["author"] or {}).get("login", "").lower() in vip
 def stale(pr): return days > 0 and not is_vip(pr) and now - datetime.datetime.fromisoformat(pr["updatedAt"].replace("Z", "+00:00")).timestamp() > days * 86400
 snooze = settings.get("snooze", {})
+def key(pr): return f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}'
 def done(pr):
-    key = f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}'
-    if snooze.get(key, 0) > now * 1000: return True  # snoozed in the panel (h): not today
-    entry = state.get(key)
+    entry = state.get(key(pr))
     return entry is not None and not (entry.get("state") == "failed" and not entry.get("auto"))
 # claude-review without a checkout exits before marking, so such a PR would reopen every tick.
 def checked_out(repo): return os.path.isdir(os.path.join(os.path.expanduser(config["repos"]), repo, ".git"))
-todo = [pr for pr in json.loads(search.stdout) if pr["repository"]["nameWithOwner"].startswith(config["org"] + "/") and pr["repository"]["name"] in reviewable
-        and not pr["isDraft"] and not stale(pr) and not done(pr) and checked_out(pr["repository"]["name"])]
+# Snoozed in the panel (h): not today.
+def eligible(pr): return (pr["repository"]["nameWithOwner"].startswith(config["org"] + "/") and pr["repository"]["name"] in reviewable
+                          and not pr["isDraft"] and not stale(pr) and snooze.get(key(pr), 0) <= now * 1000 and checked_out(pr["repository"]["name"]))
+todo = [pr for pr in json.loads(search.stdout) if eligible(pr) and not done(pr)]
+# Follow-ups, pr.js followUp in ms: my latest request after the review, else the last commit when the head moved past the reviewed sha
+# (no sha: a commit dated after the review) and the review was not an approval. None when the PR has not moved.
+QUERY = """query ($q: String!) { viewer { login } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
+  number isDraft updatedAt headRefOid repository { name nameWithOwner } author { login } commits(last: 1) { nodes { commit { committedDate } } }
+  timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } } } } } }"""
+reviewed = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", "q=is:open is:pr archived:false reviewed-by:@me sort:created-asc"],
+                          capture_output=True, text=True)
+if reviewed.returncode: sys.exit(print("auto on (gh failed)"))
+found = json.loads(reviewed.stdout)["data"]
+def ms(iso): return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000
+def moved_at(pr):
+    entry = state.get(key(pr), {})
+    if entry.get("state") != "reviewed": return None
+    asked = [e["createdAt"] for e in pr["timelineItems"]["nodes"] if (e.get("requestedReviewer") or {}).get("login") == found["viewer"]["login"]]
+    if asked and ms(asked[-1]) > entry["at"]: return ms(asked[-1])
+    pushed = ms(pr["commits"]["nodes"][0]["commit"]["committedDate"]) if pr["commits"]["nodes"] else 0
+    moved = pr["headRefOid"] != entry["sha"] if entry.get("sha") else pushed > entry["at"]
+    return pushed if moved and entry.get("verdict") != "approved" else None
+# An hour without a push or a new request: the author is done for now.
+def due(pr): at = moved_at(pr); return at is not None and now * 1000 - at >= 3600 * 1000
+todo += [pr for pr in found["search"]["nodes"] if eligible(pr) and due(pr)]
 todo.sort(key=lambda pr: not is_vip(pr))  # stable: oldest first within VIPs and the rest
 if not todo: sys.exit(print("auto on (nothing to review)"))
 for pr in todo[:left]:

@@ -11,7 +11,7 @@ const QUERY = `query ($q: String!) {
   search(query: $q, type: ISSUE, first: 50) {
     nodes {
       ... on PullRequest {
-        title url number isDraft updatedAt reviewDecision mergeable headRefName
+        title url number isDraft updatedAt reviewDecision mergeable headRefName headRefOid
         reviewThreads(first: 100) { nodes { isResolved } }
         repository { name nameWithOwner }
         author { login }
@@ -19,7 +19,8 @@ const QUERY = `query ($q: String!) {
         reviewRequests(first: 10) {
           nodes { requestedReviewer { ... on User { login avatarUrl(size: 40) } ... on Team { login: slug avatarUrl(size: 40) } } }
         }
-        commits(last: 1) { nodes { commit { statusCheckRollup { state } author { email } } } }
+        commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state } author { email } } } }
+        timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } }
       }
     }
   }

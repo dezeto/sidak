@@ -167,13 +167,13 @@
 
   nav { display: flex; gap: 2px; margin-top: 10px; padding: 3px; border-radius: 17px; background: var(--lg-bg-interactive); }
   nav:empty { display: none; }
-  /* Board: one tab's list in the popup, six columns (inbox row, Mine row) once there is room. */
+  /* Board: one tab's list in the popup, the current profile's four columns side by side once there is room. */
   .board { display: grid; }
   @media (min-width: 760px) {
     body { width: auto; max-width: 1240px; padding: 0 16px; }
     #tabs { display: none; }
     .search { margin-left: auto; }
-    .board { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; margin-top: 14px; padding: 0 14px; }
+    .board { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; align-items: start; margin-top: 14px; padding: 0 14px; }
     .column { min-width: 0; padding: 0 0 6px; overflow: hidden; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated); box-shadow: var(--lg-highlight); }
     /* Sidak.app opens panel.html#inbox or #mine: one menu-bar item per view. */
     body[data-view='inbox'] .column[data-group='mine'] { display: none; }
@@ -282,10 +282,17 @@
   .info > span + span { margin-left: 10px; }
   .state { font-weight: 600; color: var(--state); }
   .checks { font-size: 11px; font-weight: 700; color: var(--state); }
-  /* Reviewed: the reviewer's TL;DR under the meta line, the What / Found / Next labels in a column of their own. */
-  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
+  /* Reviewed: the Next line under the meta line, in the accent when the PR moved since the review; a click opens What and Found above it.
+     The labels keep a column of their own, the chevron a third one when there is more to open. */
+  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); text-align: left; }
   .tldr > span { display: contents; }
-  .tldr b { font-weight: 600; color: var(--lg-ink-muted); }
+  .tldr b { grid-column: 1; font-weight: 600; color: var(--lg-ink-muted); }
+  .tldr span span { grid-column: 2; }
+  .tldr[aria-expanded='false'] > :not(.next) { display: none; }
+  .tldr[aria-expanded='false'] .next > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .next[data-live] > span { font-weight: 600; color: var(--lg-accent); }
+  .tldr:has(> :nth-child(2)) .next::after { content: '\25BE'; grid-column: 3; color: var(--lg-ink-muted); transition: rotate var(--lg-duration-fast); }
+  .tldr[aria-expanded='true'] .next::after { rotate: 180deg; }
   .avatars { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; }
   .avatars:not(:empty) { margin-right: 10px; }
   .avatars img { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--state); }
@@ -434,7 +441,7 @@
   </div>
   <div class="set">
     <span class="l">Auto review</span>
-    <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of every Inbox PR with this model and effort, in cmux workspaces that do not take focus: VIPs first, then the oldest; at most 10 a day">
+    <div class="seg" data-setting="auto" role="group" aria-label="Auto review (quick)" title="While on, Sidak.app starts a quick review of every Inbox PR with this model and effort, in cmux workspaces that do not take focus: VIPs first, then the oldest; at most 10 a day. A reviewed PR whose author pushed or re-requested you gets a re-review once it has been quiet for an hour">
       <button type="button" value="off">Off</button><button type="button" value="on">On</button>
     </div>
   </div>
@@ -490,7 +497,7 @@
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="75 100" /></svg></td><td>Filled by the share of your queue already reviewed</td></tr>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="50 100" /><circle class="run" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="0 50 25 100" /></svg></td><td>Amber: reviews running now</td></tr>
     <tr><td><svg class="ring" viewBox="0 0 16 16" aria-hidden="true"><circle class="track" cx="8" cy="8" r="5.5" /><circle class="low" cx="8" cy="8" r="5.5" pathLength="100" stroke-dasharray="15 100" /></svg></td><td>Red: under a fifth done, the pile is growing</td></tr>
-    <tr><td><b>A</b></td><td>Auto review is on (settings, amber dot): while Sidak.app runs, every Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest; at most 10 a day</td></tr>
+    <tr><td><b>A</b></td><td>Auto review is on (settings, amber dot): while Sidak.app runs, every Inbox PR gets a quick review in a background cmux workspace, VIPs first then oldest, and an Updated PR a re-review an hour after its last push or request; at most 10 a day</td></tr>
   </table>
   <p>The number in the menu-bar pill is how many still wait for you; while a review runs the pill shows its PR and elapsed time. <kbd>⌃⌥P</kbd> opens this panel from anywhere, and <kbd>p</kbd> pins it as a floating window you can drag by its top edge.</p>
 </dialog>

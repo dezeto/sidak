@@ -32,22 +32,28 @@ STATE=$SIDAK_DIR/state.json
 # The reviewer's notes for the next run on this PR; also local only.
 HANDOFF=$SIDAK_DIR/handoffs/$repo-$n.md
 mkdir -p ${HANDOFF:h}
-mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" <<'PY'
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" "$(git -C $wt rev-parse HEAD 2>/dev/null)" <<'PY'
 import json, os, re, sys, time
-path, key, state, model, depth, run, auto, verdict, handoff = sys.argv[1:]
+path, key, state, model, depth, run, auto, verdict, handoff, sha = sys.argv[1:]
 data = json.load(open(path)) if os.path.exists(path) else {}
+prev = data.get(key, {})
 # A newer run on this PR owns the entry: the old tab the opener just closed must not mark it failed.
-if data.get(key, {}).get("run", 0) > int(run): sys.exit()
+if prev.get("run", 0) > int(run): sys.exit()
 data[key] = {"state": state, "at": int(time.time() * 1000), "model": model, "depth": depth, "run": int(run)}
 # pr-board auto counts these against its daily cap and never retries one that failed.
 if auto: data[key]["auto"] = True
 # The panel and the finish notification show it; empty on a self-check, which posts nothing.
 verdict = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "COMMENTED": "commented"}.get(verdict)
 if verdict: data[key]["verdict"] = verdict
+# The head this run reviewed: the board and pr-board auto compare it with the PR's head to see new commits. The worktree is gone
+# by the tab's last mark, which keeps what an earlier mark of the same run saw.
+sha = sha or (prev.get("sha", "") if prev.get("run") == int(run) else "")
+if state == "reviewed" and sha: data[key]["sha"] = sha
 # The TL;DR that opens this run's handoff: the Reviewed card shows it, so the board says what to do without opening the PR.
+# Its three lines only: reviewers put other notes under it too.
 if os.path.exists(handoff) and os.path.getmtime(handoff) > int(run):
-    tldr = re.search(r"^## TL;DR\n(.*?)(?=^## |\Z)", open(handoff).read(), re.M | re.S)
-    if tldr: data[key]["tldr"] = tldr.group(1).strip()
+    tldr = re.findall(r"^[-*] *(?:What|Found|Next):.*$", open(handoff).read(), re.M)[:3]
+    if tldr: data[key]["tldr"] = "\n".join(tldr)
 json.dump(data, open(path, "w"))
 PY
 }

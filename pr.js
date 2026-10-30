@@ -26,7 +26,24 @@ function toPr(pr, viewer) {
     mergeable: pr.mergeable ?? null,
     branch: pr.headRefName ?? null,
     unresolved: (pr.reviewThreads?.nodes ?? []).filter((t) => !t.isResolved).length,
+    head: pr.headRefOid ?? null,
+    pushedAt: commit?.committedDate ?? null,
+    // My latest review request: one after my review is a nudge to look again.
+    requestedAt: (pr.timelineItems?.nodes ?? []).filter((event) => event.requestedReviewer?.login === viewer).at(-1)?.createdAt ?? null,
   };
+}
+
+// A PR I reviewed that moved since: the author re-requested my review, or pushed after a review that was not an approval (after an
+// approval the push is theirs to merge). entry is its state.json entry (claude-review: at, sha, verdict). Returns why and since when
+// in ms, or null. pr-board auto mirrors this and re-reviews such a PR once it has been quiet for an hour.
+function followUp(pr, entry) {
+  if (entry?.state !== 'reviewed') return null;
+  const asked = Date.parse(pr.requestedAt);
+  if (asked > entry.at) return { why: 'requested', since: asked };
+  const pushed = Date.parse(pr.pushedAt);
+  // Older entries have no sha: a commit dated after the review stands in.
+  const moved = entry.sha ? Boolean(pr.head) && pr.head !== entry.sha : pushed > entry.at;
+  return moved && entry.verdict !== 'approved' ? { why: 'commits', since: pushed } : null;
 }
 
 // One of my own PRs in the author profile. group is its tab (needs, waiting, ready, draft) and rank its order, conflicts first and drafts last;
@@ -93,4 +110,4 @@ async function readToken() {
   return (await res.text()).trim();
 }
 
-if (typeof module === 'object') module.exports = { toPr, authorState, isStale, isVip };
+if (typeof module === 'object') module.exports = { toPr, authorState, isStale, isVip, followUp };

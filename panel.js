@@ -287,6 +287,8 @@ function avatar(reviewer) {
   return img;
 }
 
+// The cards whose TL;DR is open, kept across the re-render every sync does.
+const openTldrs = new Set();
 function prRow(pr) {
   const row = rowTemplate.cloneNode(true);
   row.href = pr.url;
@@ -300,13 +302,29 @@ function prRow(pr) {
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author, pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', VERDICTS[pr.verdict], pr.auto && 'auto'));
   if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
-  // Reviewed: the reviewer's TL;DR (the top of its handoff, which claude-review copies into state.json), a line each for What, Found and Next.
-  if (pr.claude === 'reviewed' && pr.tldr) {
-    const tldr = row.appendChild(el('span', { className: 'tldr' }));
-    for (const [, label, text] of pr.tldr.matchAll(/^[-*]?[ \t]*(?:(\w+):)?[ \t]*(.+)$/gm)) {
-      tldr.append(el('span', { textContent: text }));
-      tldr.lastChild.prepend(el('b', { textContent: label ?? '' }));
+  // Reviewed: the Next line, live when the PR moved since the review; a click on it opens the reviewer's What and Found above it.
+  // The TL;DR is the top of the reviewer's handoff, which claude-review copies into state.json.
+  const live = { requested: 'Re-requested your review', commits: 'New commits since your review' }[pr.followUp?.why];
+  if (pr.claude === 'reviewed' && (pr.tldr || live)) {
+    const lines = new Map([...(pr.tldr ?? '').matchAll(/^[-*]?[ \t]*(What|Found|Next):[ \t]*(.+)$/gm)].map(([, label, text]) => [label, text]));
+    const next = live ?? lines.get('Next');
+    lines.delete('Next');
+    if (next) lines.set('Next', next);
+    const tldr = row.appendChild(el('button', { className: 'tldr', type: 'button' }));
+    for (const [label, text] of lines) {
+      const line = tldr.appendChild(el('span', { className: label === 'Next' ? 'next' : '' }));
+      line.append(el('b', { textContent: label }), el('span', { textContent: text }));
     }
+    if (live) tldr.lastChild.dataset.live = '';
+    const key = `${repoOf(pr)}#${pr.number}`;
+    const show = () => tldr.setAttribute('aria-expanded', openTldrs.has(key));
+    show();
+    tldr.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!openTldrs.delete(key)) openTldrs.add(key);
+      show();
+    };
   }
   row.oncontextmenu = (event) => openMenu(event, pr);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
@@ -383,7 +401,7 @@ function prRow(pr) {
 
 // The popup shows one column at a time, picked by a tab, under its section label; Inbox's label says what is left.
 // Stale rows close in a fold at the bottom, outside the count.
-const SECTION_LABELS = { Inbox: 'To review' };
+const SECTION_LABELS = { Inbox: 'To review', Updated: 'Updated since your review', Reviewed: 'Waiting on author' };
 function column(title, iconId, prs, group = 'inbox', stale = []) {
   const section = el('section', { className: 'column' });
   section.dataset.tab = title;
@@ -406,7 +424,7 @@ function staleFold(prs) {
   return details;
 }
 
-// Each profile keeps its own open tab: Inbox / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
+// Each profile keeps its own open tab: Inbox / Updated / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
 const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'Needs me') };
 function showTab(title, group) {
   const moved = openTab[group] !== title;
@@ -446,13 +464,14 @@ function tabButton(title, count, group) {
   return button;
 }
 
-// bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto, verdict, tldr } }.
+// bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto, verdict, sha, tldr } }.
 async function reviewState() {
   const res = await fetch(chrome.runtime.getURL('state.json'), { cache: 'no-store' }).catch(() => null);
   return res?.ok ? res.json() : {};
 }
 
-// Review pipeline: requested PRs flow Inbox -> Running -> Reviewed by state.json; Mine splits by what each PR needs next.
+// Review pipeline: requested PRs flow Inbox -> Running -> Reviewed by state.json, and back to Updated when they move after my review;
+// Mine splits by what each PR needs next.
 // Stale PRs (settings.staleDays) fold away in Inbox and Mine, never in Running or Reviewed; a VIP is never stale and tops the Inbox.
 function board(sections, state) {
   const by = Object.fromEntries(sections.map((s) => [s.title, s.prs]));
@@ -467,17 +486,21 @@ function board(sections, state) {
     pr.auto = entry?.auto ?? false;
     pr.verdict = entry?.verdict ?? null;
     pr.tldr = entry?.tldr ?? null;
+    pr.followUp = followUp(pr, entry);
   }
   // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
   const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));
   const inbox = requested
     .filter((pr) => pr.claude !== 'running' && pr.claude !== 'reviewed')
     .sort((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip));
+  // A reviewed PR that moved since my review (followUp) is mine again, in Updated; Reviewed keeps the rest, which wait on their author.
+  const reviewed = all.filter((pr) => pr.claude === 'reviewed');
   const wrap = el('div', { className: 'board' });
   wrap.append(
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
+    column('Updated', 'i-refresh', reviewed.filter((pr) => pr.followUp)),
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
-    column('Reviewed', 'i-done', all.filter((pr) => pr.claude === 'reviewed')),
+    column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp)),
     ...mineColumns(by.Mine ?? [], stale),
   );
   return wrap;

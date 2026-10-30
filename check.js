@@ -1,6 +1,6 @@
 // Run: node check.js
 const assert = require('node:assert/strict');
-const { toPr, authorState, isStale, isVip } = require('./pr.js');
+const { toPr, authorState, isStale, isVip, followUp } = require('./pr.js');
 
 const user = (login) => ({ login, avatarUrl: `https://avatars.example/${login}` });
 const review = (state, login) => ({ state, author: user(login) });
@@ -50,6 +50,23 @@ assert.equal(pr({ author: null }).author, null);
 assert.equal(pr({}).checks, null);
 assert.equal(pr({ commits: { nodes: [{ commit: { statusCheckRollup: { state: 'FAILURE' } } }] } }).checks, 'FAILURE');
 assert.equal(pr({}).repoFull, 'o/crm');
+
+// Reviewed: a follow-up once the PR moved after my review
+const at = Date.parse('2026-10-20T00:00:00Z');
+const later = { nodes: [{ commit: { committedDate: '2026-10-21T00:00:00Z' } }] };
+const asked = (login, createdAt) => ({ timelineItems: { nodes: [{ createdAt, requestedReviewer: user(login) }] } });
+const mine = { state: 'reviewed', at, sha: 'a', verdict: 'changes' };
+const why = (overrides, entry = mine) => followUp(pr({ headRefOid: 'a', ...overrides }), entry)?.why ?? null;
+assert.equal(why({}), null);
+assert.equal(why({ headRefOid: 'b', commits: later }), 'commits');
+assert.equal(why({ headRefOid: 'b', commits: later }, { ...mine, verdict: 'approved' }), null); // after my approval a push is theirs to merge
+assert.equal(why(asked('me', '2026-10-21T00:00:00Z')), 'requested');
+assert.equal(why(asked('me', '2026-10-21T00:00:00Z'), { ...mine, verdict: 'approved' }), 'requested');
+assert.equal(why(asked('me', '2026-10-19T00:00:00Z')), null); // the request this review answered
+assert.equal(why(asked('a', '2026-10-21T00:00:00Z')), null);
+assert.equal(why({ commits: later }, { state: 'reviewed', at }), 'commits'); // no sha recorded: the commit date stands in
+assert.equal(why({ headRefOid: 'b', commits: later }, { ...mine, state: 'running' }), null);
+assert.equal(followUp(pr({}), undefined), null);
 
 // Mine: what each of my PRs needs next
 const green = { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] } };
