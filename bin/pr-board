@@ -31,7 +31,7 @@ state = json.load(open(sys.argv[1]))
 QUERY = """query ($q: String!) { viewer { login } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number title isDraft updatedAt headRefOid repository { name nameWithOwner } author { login } commits(last: 1) { nodes { commit { committedDate } } }
   timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } } } } } }"""
-out = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", "q=is:open is:pr archived:false reviewed-by:@me sort:created-asc"],
+out = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", "q=is:open is:pr archived:false reviewed-by:@me -author:@me sort:created-asc"],
                      capture_output=True, text=True)
 if out.returncode: sys.exit(print("[]"))
 found = json.loads(out.stdout)["data"]

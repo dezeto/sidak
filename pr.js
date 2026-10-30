@@ -35,9 +35,10 @@ function toPr(pr, viewer) {
 
 // A PR I reviewed that moved since: the author re-requested my review, or pushed after a review that was not an approval (after an
 // approval the push is theirs to merge). entry is its state.json entry (claude-review: at, sha, verdict). Returns why and since when
-// in ms, or null. pr-board auto mirrors this and re-reviews such a PR once it has been quiet for an hour.
+// in ms, or null. My own PRs never follow up: their pushes are mine. pr-board auto mirrors this and re-reviews such a PR once it has
+// been quiet for an hour.
 function followUp(pr, entry) {
-  if (entry?.state !== 'reviewed') return null;
+  if (entry?.state !== 'reviewed' || !pr.author) return null;
   const asked = Date.parse(pr.requestedAt);
   if (asked > entry.at) return { why: 'requested', since: asked };
   const pushed = Date.parse(pr.pushedAt);

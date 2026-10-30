@@ -56,7 +56,7 @@ const at = Date.parse('2026-10-20T00:00:00Z');
 const later = { nodes: [{ commit: { committedDate: '2026-10-21T00:00:00Z' } }] };
 const asked = (login, createdAt) => ({ timelineItems: { nodes: [{ createdAt, requestedReviewer: user(login) }] } });
 const mine = { state: 'reviewed', at, sha: 'a', verdict: 'changes' };
-const why = (overrides, entry = mine) => followUp(pr({ headRefOid: 'a', ...overrides }), entry)?.why ?? null;
+const why = (overrides, entry = mine) => followUp(pr({ headRefOid: 'a', author: user('b'), ...overrides }), entry)?.why ?? null;
 assert.equal(why({}), null);
 assert.equal(why({ headRefOid: 'b', commits: later }), 'commits');
 assert.equal(why({ headRefOid: 'b', commits: later }, { ...mine, verdict: 'approved' }), null); // after my approval a push is theirs to merge
@@ -67,6 +67,7 @@ assert.equal(why(asked('a', '2026-10-21T00:00:00Z')), null);
 assert.equal(why({ commits: later }, { state: 'reviewed', at }), 'commits'); // no sha recorded: the commit date stands in
 assert.equal(why({ headRefOid: 'b', commits: later }, { ...mine, state: 'running' }), null);
 assert.equal(followUp(pr({}), undefined), null);
+assert.equal(why({ headRefOid: 'b', commits: later, author: user('me') }), null); // my own PR
 
 // Mine: what each of my PRs needs next
 const green = { commits: { nodes: [{ commit: { statusCheckRollup: { state: 'SUCCESS' } } }] } };
