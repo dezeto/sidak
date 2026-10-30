@@ -23,6 +23,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (Needs me, Waiting, Ready, Drafts) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
+- **TL;DR on every Reviewed card**: what the PR does, what the review found, and what you do next.
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, at most ten a day.

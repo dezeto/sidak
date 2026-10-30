@@ -300,6 +300,14 @@ function prRow(pr) {
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author, pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', VERDICTS[pr.verdict], pr.auto && 'auto'));
   if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
+  // Reviewed: the reviewer's TL;DR (the top of its handoff, which claude-review copies into state.json), a line each for What, Found and Next.
+  if (pr.claude === 'reviewed' && pr.tldr) {
+    const tldr = row.appendChild(el('span', { className: 'tldr' }));
+    for (const [, label, text] of pr.tldr.matchAll(/^[-*]?[ \t]*(?:(\w+):)?[ \t]*(.+)$/gm)) {
+      tldr.append(el('span', { textContent: text }));
+      tldr.lastChild.prepend(el('b', { textContent: label ?? '' }));
+    }
+  }
   row.oncontextmenu = (event) => openMenu(event, pr);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
   if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
@@ -438,7 +446,7 @@ function tabButton(title, count, group) {
   return button;
 }
 
-// bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto } }.
+// bin/claude-review writes state.json next to this file: { "owner/repo#n": { state, at, model, depth, run, auto, verdict, tldr } }.
 async function reviewState() {
   const res = await fetch(chrome.runtime.getURL('state.json'), { cache: 'no-store' }).catch(() => null);
   return res?.ok ? res.json() : {};
@@ -458,6 +466,7 @@ function board(sections, state) {
     pr.depth = entry?.depth ?? null;
     pr.auto = entry?.auto ?? false;
     pr.verdict = entry?.verdict ?? null;
+    pr.tldr = entry?.tldr ?? null;
   }
   // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
   const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));

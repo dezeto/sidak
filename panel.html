@@ -282,6 +282,10 @@
   .info > span + span { margin-left: 10px; }
   .state { font-weight: 600; color: var(--state); }
   .checks { font-size: 11px; font-weight: 700; color: var(--state); }
+  /* Reviewed: the reviewer's TL;DR under the meta line, the What / Found / Next labels in a column of their own. */
+  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
+  .tldr > span { display: contents; }
+  .tldr b { font-weight: 600; color: var(--lg-ink-muted); }
   .avatars { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; }
   .avatars:not(:empty) { margin-right: 10px; }
   .avatars img { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--state); }

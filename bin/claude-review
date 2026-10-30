@@ -32,9 +32,9 @@ STATE=$SIDAK_DIR/state.json
 # The reviewer's notes for the next run on this PR; also local only.
 HANDOFF=$SIDAK_DIR/handoffs/$repo-$n.md
 mkdir -p ${HANDOFF:h}
-mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" <<'PY'
-import json, os, sys, time
-path, key, state, model, depth, run, auto, verdict = sys.argv[1:]
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" <<'PY'
+import json, os, re, sys, time
+path, key, state, model, depth, run, auto, verdict, handoff = sys.argv[1:]
 data = json.load(open(path)) if os.path.exists(path) else {}
 # A newer run on this PR owns the entry: the old tab the opener just closed must not mark it failed.
 if data.get(key, {}).get("run", 0) > int(run): sys.exit()
@@ -44,6 +44,10 @@ if auto: data[key]["auto"] = True
 # The panel and the finish notification show it; empty on a self-check, which posts nothing.
 verdict = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "COMMENTED": "commented"}.get(verdict)
 if verdict: data[key]["verdict"] = verdict
+# The TL;DR that opens this run's handoff: the Reviewed card shows it, so the board says what to do without opening the PR.
+if os.path.exists(handoff) and os.path.getmtime(handoff) > int(run):
+    tldr = re.search(r"^## TL;DR\n(.*?)(?=^## |\Z)", open(handoff).read(), re.M | re.S)
+    if tldr: data[key]["tldr"] = tldr.group(1).strip()
 json.dump(data, open(path, "w"))
 PY
 }
@@ -75,7 +79,8 @@ close_tab() {
 }
 ( while sleep 45; do posted && { mark reviewed; break; }; done
   # Remove the worktree before closing: the HUP trap gets killed with the tab before its own cleanup finishes.
-  until handed_off; do sleep 15; done; sleep 10; git -C $CRM worktree remove --force "$wt" 2>/dev/null; close_tab ) &
+  # Marked again once handed off: that copies the handoff's TL;DR into state.json.
+  until handed_off; do sleep 15; done; mark reviewed; sleep 10; git -C $CRM worktree remove --force "$wt" 2>/dev/null; close_tab ) &
 watcher=$!
 [[ -d $wt ]] && git -C $CRM worktree remove --force "$wt"
 if ! { git -C $CRM fetch origin "pull/$n/head" && git -C $CRM worktree add --detach "$wt" FETCH_HEAD; }; then
@@ -133,7 +138,7 @@ $sections
 
 $findings
 
-Once the review is posted, write the handoff to $HANDOFF, replacing what is there. It is private notes for whoever reviews this PR next, never posted: the full sha you reviewed and the depth (${DEPTH:-full}); the AC table with verdicts; every point you raised, inline or in the body, with path:line, the fix you expect, and whether it blocks; what you checked and found fine; what you chose not to flag and why; open questions. Writing the handoff is your last step: this session closes automatically shortly after.
+Once the review is posted, write the handoff to $HANDOFF, replacing what is there. It is private notes for whoever reviews this PR next, never posted. Start it with a "## TL;DR" section for $login, who reads it on a board without opening the PR: three lines in plain words, no paths or shas: "- What: <what the PR does, one sentence>", "- Found: <the one or two points that matter, or that nothing blocks; the board already shows the verdict>", "- Next: <what $login should do now: nothing, wait for the author to fix point N, check the author's reply on X, approve once Y lands>". Then the full sha you reviewed and the depth (${DEPTH:-full}); the AC table with verdicts; every point you raised, inline or in the body, with path:line, the fix you expect, and whether it blocks; what you checked and found fine; what you chose not to flag and why; open questions. Writing the handoff is your last step: this session closes automatically shortly after.
 EOF
 )
 # My own PR (Skim / Deep from the panel's Mine profile): the same checks as a self-check, printed here instead of posted.
