@@ -164,7 +164,7 @@ const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]')
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
-// Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the footer says Auto on while on.
+// Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the footer says Auto while on.
 const autoSeg = document.querySelector('#settings [data-setting="auto"]');
 // Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
 const profileSeg = document.querySelector('#settings [data-setting="profile"]');
@@ -172,7 +172,7 @@ const profileSeg = document.querySelector('#settings [data-setting="profile"]');
 const phoneSeg = document.querySelector('#settings [data-setting="phone"]');
 const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
 // The footer names what a click runs, in the pickers' words, as plain words that open and close the settings card above them: the
-// profile always (its account pays), Auto only while on. Set-once settings (sync interval, stale cut-off) stay in the card.
+// profile always (its account pays), Auto only while auto review is on. Set-once settings (sync interval, stale cut-off) stay in the card.
 // The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
 function renderFoot() {
@@ -184,7 +184,7 @@ function renderFoot() {
     profile && pick(profile, 'Claude profile for new reviews'),
     pick(label('model'), 'Model for new reviews'),
     pick(label('effort'), 'Effort for new reviews'),
-    settings.auto?.on && pick('Auto on', 'Auto review is on'),
+    settings.auto?.on && pick('Auto', 'Auto review is on'),
   ].filter(Boolean));
 }
 function showSettings() {
@@ -390,6 +390,8 @@ function prRow(pr) {
     }
   }
   if (!config.reviewable.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
+  // How many buttons the card shows, for panel.html: WebKit misses :hover inside :has() on some rows, so no :has(.actions) there.
+  else row.dataset.acts = actions.children.length;
   for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
   // The label is the button's first text node; its key hint stays.
   if (pr.claude === 'reviewed') actions.lastElementChild.firstChild.data = 'Again';
@@ -417,17 +419,17 @@ function column(title, iconId, prs, group = 'inbox', stale = []) {
 
 // Opening the fold (a click, x, or a search that matches inside it) lifts its rows in; a render that reopens it for a query does not.
 let renderedAt = 0;
-function staleFold(prs) {
-  const details = el('details', { className: 'stale' });
+function staleFold(prs, label = 'Stale', className = 'stale') {
+  const details = el('details', { className });
   details.ontoggle = () => details.open && performance.now() - renderedAt > 100 && rise([...details.querySelectorAll(':scope > .pr:not([hidden])')]);
   const summary = el('summary');
-  summary.append(el('span', { className: 'count', textContent: `Stale ${prs.length}` }));
+  summary.append(el('span', { className: 'count', textContent: `${label} ${prs.length}` }));
   details.append(summary, ...prs.map(prRow));
   return details;
 }
 
-// Each profile keeps its own open tab: Inbox / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
-const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'Needs me') };
+// Each profile keeps its own open tab: Inbox / Running / Reviewed, or To do / Waiting / Ready.
+const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'To do') };
 function showTab(title, group) {
   const moved = openTab[group] !== title;
   openTab[group] = title;
@@ -507,13 +509,18 @@ function board(sections, state) {
 }
 
 // Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.
-const MINE_TABS = [['needs', 'Needs me', 'i-person'], ['waiting', 'Waiting', 'i-pr'], ['ready', 'Ready', 'i-done'], ['draft', 'Drafts', 'i-pr']];
+const MINE_TABS = [['needs', 'To do', 'i-person'], ['waiting', 'Waiting', 'i-pr'], ['ready', 'Ready', 'i-done']];
 function mineColumns(prs, stale) {
   for (const pr of prs) Object.assign(pr, { mine: true, next: authorState(pr) });
   prs.sort((a, b) => a.next.rank - b.next.rank || Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
   return MINE_TABS.map(([group, title, iconId]) => {
-    const rows = prs.filter((pr) => pr.next.group === group);
-    return column(title, iconId, rows.filter((pr) => !stale(pr)), 'mine', rows.filter(stale));
+    // Drafts are mine to move too, so they fold at the end of To do (the stale fold class: search opens it), out of its count.
+    const rows = prs.filter((pr) => pr.next.group === group || (group === 'needs' && pr.next.group === 'draft'));
+    const fresh = rows.filter((pr) => !stale(pr));
+    const section = column(title, iconId, fresh.filter((pr) => pr.next.group !== 'draft'), 'mine', rows.filter(stale));
+    const drafts = fresh.filter((pr) => pr.next.group === 'draft');
+    if (drafts.length) section.insertBefore(staleFold(drafts, 'Drafts', 'stale drafts'), section.querySelector(':scope > details.stale'));
+    return section;
   });
 }
 
@@ -589,14 +596,14 @@ async function render() {
   const missing = file ? [] : [el('p', { className: 'empty', textContent: 'No config.json: run ./install.sh in the Sidak folder.' })];
   list.replaceChildren(...missing, ...prs, ...(prs.length && bookmarks.length ? [el('hr')] : []), ...bookmarks);
   const columns = [...list.querySelectorAll('.column')];
-  // Counts leave out the folded stale rows; the switch's Mine count is Needs me.
+  // Counts leave out the folded stale rows and drafts; the switch's Mine count is To do.
   const prsIn = (section) => section.querySelectorAll(':scope > .pr').length;
   tabsBar.replaceChildren(...columns.map((section) => tabButton(section.dataset.tab, prsIn(section), section.dataset.group)));
   const count = (tab) => prsIn(columns.find((section) => section.dataset.tab === tab) ?? el('section'));
-  counts = { inbox: count('Inbox'), mine: count('Needs me') };
+  counts = { inbox: count('Inbox'), mine: count('To do') };
   labelSwitch();
   if (!columns.some((section) => section.dataset.tab === openTab.inbox)) openTab.inbox = 'Inbox';
-  if (!columns.some((section) => section.dataset.tab === openTab.mine)) openTab.mine = 'Needs me';
+  if (!columns.some((section) => section.dataset.tab === openTab.mine)) openTab.mine = 'To do';
   markActive();
   applyFilter();
   riseNewRows();
@@ -713,7 +720,7 @@ document.addEventListener('keydown', (event) => {
     n: () => rows[index]?.querySelector('.review[data-depth="nudge"]')?.click(),
     m: () => rows[index]?.querySelector('.review[data-depth="merge"]')?.click(),
     r: () => rows[index]?.querySelector('.review[data-depth="ready"]')?.click(),
-    x: () => list.querySelector('.column.active details.stale')?.toggleAttribute('open'),
+    x: () => list.querySelector('.column.active details.stale:not(.drafts)')?.toggleAttribute('open'),
     h: () => toggleSnooze(rows[index]?.dataset.key),
     R: () => refresh.click(),
     p: () => pinButton.click(),
@@ -737,7 +744,7 @@ function showMe() {
   me.replaceChildren(config.login.slice(0, 1).toUpperCase(), img);
 }
 showMe();
-// A red dot on the inbox tray while my own PRs need me (Needs me has rows); the tooltip counts the other profile's work.
+// A red dot on the inbox tray while my own PRs need me (To do has rows); the tooltip counts the other profile's work.
 const viewCount = document.getElementById('view-count');
 let counts = { inbox: 0, mine: 0 };
 function labelSwitch() {

@@ -20,7 +20,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 
 ## What you get
 
-- **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (Needs me, Waiting, Ready, Drafts) with
+- **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (To do with your drafts folded under it, Waiting, Ready) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
 - **Follow-ups**: a reviewed PR comes back to the Inbox when its author pushes after your review or re-requests you; Reviewed

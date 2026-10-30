@@ -52,8 +52,8 @@
      preview on the long press that opens the card menu. */
   :root[data-remote] body { width: auto; }
   :root[data-remote] .pr .actions { display: flex; }
-  :root[data-remote] .pr:has(.actions) :is(.avatars, .time) { display: none; }
-  :root[data-remote] .pr:has(.actions > :nth-child(3)) .pill { display: none; }
+  :root[data-remote] .pr[data-acts] :is(.avatars, .time) { display: none; }
+  :root[data-remote] .pr[data-acts='3'] .pill { display: none; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }
   button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }
@@ -86,8 +86,8 @@
   :root:not([data-app]) #pin { display: none; }
   :root[data-pinned='1'] header { padding-top: 28px; }
   :root[data-pinned='1'] header::before { content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--lg-ink-muted); pointer-events: none; }
-  /* Search: rarely used, so a round glass button beside Pin until a tap or / opens it. Then the glass stretches into a field across
-     the row, and folds back once it is empty and left (Esc on an empty field). */
+  /* Search: rarely used, so a round glass button after the tabs until a tap or / opens it. Then the glass stretches into a field
+     over the tabs, and folds back once it is empty and left (Esc on an empty field). */
   .search { flex: 1; max-width: 100%; margin-left: auto; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
   .search:not(:focus-within):has(#search:placeholder-shown) { max-width: 30px; gap: 0; padding: 0; justify-content: center; cursor: pointer; }
   .search:not(:focus-within):has(#search:placeholder-shown) #search { flex: 0 0 0; }
@@ -116,12 +116,13 @@
   body[data-view='mine'] #view .icon, body:not([data-view='mine']) #view .me { display: none; }
   /* The tab bar holds both profiles' tabs and shows the current one's. Nothing to switch without a board. */
   body[data-view='mine'] #tabs [data-group='inbox'], body:not([data-view='mine']) #tabs [data-group='mine'], body:not(:has(.board)) .switch { display: none; }
-  /* Tabs: one glass segmented capsule centred between the switch and search; the lit lozenge is the open tab. */
-  #tabs { display: flex; gap: 2px; margin-top: 10px; padding: 2px; border-radius: 17px; }
+  /* Tabs: one glass segmented capsule between the switch and search, three a side; the lit lozenge is the open tab. An open
+     search takes their place. */
+  #tabs { display: flex; flex: 1; min-width: 0; gap: 2px; padding: 2px; border-radius: 17px; }
+  .find:has(.search:focus-within, #search:not(:placeholder-shown)) #tabs { display: none; }
   #tabs:empty { display: none; }
   #tabs button { display: flex; flex: 1; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 28px; padding: 0 8px; border-radius: 14px; font-size: 12px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
-  /* Four tabs on my own PRs: tighter, so two-digit counts still fit; past that a label ellipsizes. In Sidak.app the Pin button
-     takes a slot too, so there the round buttons are 28 px and my tabs a size smaller. */
+  /* Past two-digit counts a label ellipsizes. In Sidak.app the Pin button takes a slot too, so there the round buttons are 28 px. */
   #tabs .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   :root[data-app] :is(#view, #pin, .search) { width: 28px; height: 28px; }
   :root[data-app] .search:not(:focus-within):has(#search:placeholder-shown) { max-width: 28px; }
@@ -275,9 +276,9 @@
   /* Skim / Deep take the avatars' and age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
   .pr:is(:hover, :focus-within) .actions { display: flex; }
-  .pr:is(:hover, :focus-within):has(.actions) :is(.avatars, .time) { display: none; }
+  .pr[data-acts]:is(:hover, :focus-within) :is(.avatars, .time) { display: none; }
   /* Three buttons (my own PR: Fix / Nudge / Merge first): the pill steps aside for the title, and the capsules tighten. */
-  .pr:is(:hover, :focus-within):has(.actions > :nth-child(3)) .pill { display: none; }
+  .pr[data-acts='3']:is(:hover, :focus-within) .pill { display: none; }
   .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
   .time { grid-column: 4; grid-row: 1 / span 2; font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   /* The meta line: words 10 px apart, no separators. */
@@ -419,13 +420,13 @@
   <h1 id="space-title">Pull requests</h1>
   <div class="find">
     <span class="switch"><button id="view" class="glass" type="button"><svg class="icon" aria-hidden="true"><use href="#i-inbox" /></svg><span class="me" aria-hidden="true"></span></button><span id="view-count" aria-hidden="true" hidden></span></span>
+    <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
     <label class="search glass" title="Search (/)">
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
     </label>
     <button id="pin" class="glass" type="button" aria-pressed="false" aria-label="Keep the board floating" title="Keep the board floating (p)"><svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg></button>
   </div>
-  <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
   <nav id="spaces" aria-label="Spaces"></nav>
 </header>
 <main id="list"></main>
@@ -486,7 +487,7 @@
 <dialog id="help" aria-label="Keyboard shortcuts">
   <table>
     <tr><td><kbd>Tab</kbd></td><td>Switch between Inbox and Mine; <kbd>⌘←</kbd> or a swipe left picks Inbox, <kbd>⌘→</kbd> or a swipe right Mine</td></tr>
-    <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Pick a tab: Inbox, Running, Reviewed; in Mine Needs me, Waiting, Ready, Drafts</td></tr>
+    <tr><td><kbd>1</kbd>–<kbd>4</kbd></td><td>Pick a tab: Inbox, Running, Reviewed; in Mine To do, Waiting, Ready</td></tr>
     <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>Next / previous card</td></tr>
     <tr><td><kbd>d</kbd></td><td>Deep review the focused card; on your own PRs: findings in the terminal only</td></tr>
     <tr><td><kbd>s</kbd></td><td>Skim the focused card; on your own PRs: findings in the terminal only</td></tr>
@@ -496,7 +497,7 @@
     <tr><td><kbd>r</kbd></td><td>Mark my focused draft ready for review</td></tr>
     <tr><td><kbd>o</kbd></td><td>Open its cmux workspace; on a reviewed card the PR, on a failed one skim again</td></tr>
     <tr><td><kbd>Enter</kbd></td><td>Open the PR</td></tr>
-    <tr><td><kbd>x</kbd></td><td>Show or hide the stale PRs in this list</td></tr>
+    <tr><td><kbd>x</kbd></td><td>Show or hide the stale PRs in this list (Drafts fold under To do)</td></tr>
     <tr><td><kbd>h</kbd></td><td>Snooze the focused card for a day (it waits in the stale fold); <kbd>h</kbd> there brings it back</td></tr>
     <tr><td><kbd>⇧R</kbd></td><td>Sync PRs now</td></tr>
     <tr><td><kbd>p</kbd></td><td>Pin (Sidak.app): keep the board floating above other windows; again puts it back under the menu bar</td></tr>
