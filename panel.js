@@ -38,7 +38,7 @@ const AUTHOR_ACTIONS = {
   fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review', 'f'],
   nudge: ['Nudge', 'Re-request review from everyone still pending', 'n'],
   merge: ['Merge', 'Squash-merge and delete the branch', 'm'],
-  ready: ['Mark ready', 'Mark ready for review', 'r'],
+  ready: ['Mark Ready', 'Mark ready for review', 'r'],
 };
 // Only failing checks get a glyph: passing or running ones ask nothing of me.
 const CHECKS = { FAILURE: ['✕', 'Checks failed'], ERROR: ['✕', 'Checks errored'] };
@@ -362,6 +362,7 @@ function prRow(pr) {
   claude.replaceChildren(...(pr.claude === 'running' ? [icon('i-play')] : pr.claude === 'failed' ? ['failed'] : []));
   claude.dataset.state = pr.claude ?? '';
   claude.title = pr.claude === 'failed' ? 'Review failed: skim again (s)' : 'Open in cmux';
+  claude.ariaLabel = claude.title;
   const skim = (event) => {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
@@ -525,7 +526,7 @@ function bookmarkNode(node) {
     return collapsible({ key: node.id, className: 'folder', iconId: 'i-folder', title: node.title, children });
   }
   const row = el('a', { className: 'link', href: node.url, target: '_blank', title: node.title });
-  row.append(el('img', { src: favicon(node.url), alt: '' }), el('span', { textContent: node.title || node.url }));
+  row.append(el('img', { src: favicon(node.url), alt: '', width: 16, height: 16 }), el('span', { textContent: node.title || node.url }));
   return row;
 }
 
@@ -734,7 +735,7 @@ const me = profileSwitch.querySelector('.me');
 function showMe() {
   if (me.dataset.login === config.login) return;
   me.dataset.login = config.login;
-  const img = el('img', { src: `https://github.com/${config.login}.png?size=128`, alt: '' });
+  const img = el('img', { src: `https://github.com/${config.login}.png?size=128`, alt: '', width: 30, height: 30 });
   img.onerror = () => img.remove();
   me.replaceChildren(config.login.slice(0, 1).toUpperCase(), img);
 }
