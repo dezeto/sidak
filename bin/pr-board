@@ -59,9 +59,9 @@ start() {
   print "the review of $repo#$n did not start; check the cmux workspace"; return 1
 }
 
-# While settings.json auto.on, start a quick review of the next Inbox PR in a cmux workspace that does not take focus, with the
-# panel's model and effort: VIPs first, then the oldest request; one run at a time, at most 10 auto runs a day. A PR with a state.json
-# entry is never started again, unless it is a manual run that failed. The one output line starts with "auto on" while the mode is on.
+# While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
+# model and effort: VIPs first, then the oldest request; at most 10 auto runs a day. A PR with a state.json entry is never started
+# again, unless it is a manual run that failed. The one output line starts with "auto on" while the mode is on.
 auto() {
   local line=$(python3 - $SETTINGS $STATE $SIDAK_DIR/config.json <<'PY'
 import datetime, json, os, subprocess, sys, time
@@ -71,10 +71,9 @@ if not settings.get("auto", {}).get("on"): sys.exit(print("auto off"))
 if subprocess.run(["pgrep", "-x", "cmux"], capture_output=True).returncode: sys.exit(print("auto on (no cmux)"))
 state = json.load(open(state_path))
 now = time.time()
-# Still "running" after 2 h is a tab that died without settling; it does not hold the queue.
-if any(e.get("state") == "running" and now - e.get("at", 0) / 1000 < 7200 for e in state.values()): sys.exit(print("auto on (busy)"))
 midnight = datetime.datetime.combine(datetime.date.today(), datetime.time()).timestamp()
-if sum(e.get("auto", False) and e.get("run", 0) >= midnight for e in state.values()) >= 10: sys.exit(print("auto on (cap)"))
+left = 10 - sum(e.get("auto", False) and e.get("run", 0) >= midnight for e in state.values())
+if left <= 0: sys.exit(print("auto on (cap)"))
 # The Inbox's rules: reviewable from config.json, stale and VIP like pr.js (a VIP is never stale). VIP by login only: the search has no commit email.
 reviewable = config["reviewable"]
 vip = {entry.lower() for entry in settings.get("vip", [])}
@@ -96,16 +95,22 @@ todo = [pr for pr in json.loads(search.stdout) if pr["repository"]["nameWithOwne
         and not pr["isDraft"] and not stale(pr) and not done(pr) and checked_out(pr["repository"]["name"])]
 todo.sort(key=lambda pr: not is_vip(pr))  # stable: oldest first within VIPs and the rest
 if not todo: sys.exit(print("auto on (nothing to review)"))
-repo, n = todo[0]["repository"]["name"], todo[0]["number"]
-print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/quick {repo}#{n}')
+for pr in todo[:left]:
+    repo, n = pr["repository"]["name"], pr["number"]
+    print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/quick {repo}#{n}')
 PY
 )
-  [[ $line == ccreview://* ]] || { print -r -- "${line:-auto error}"; return; }
-  local url=${line% *} pr=${line##* }
-  [[ -n ${DRY:-} ]] && { print "auto on dry-run $url"; return; }
-  AUTO=1 FOCUS=false CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) \
-    $SIDAK_DIR/bin/claude-review-open "$url" >/dev/null 2>&1 || { print "auto on (could not open cmux for $pr)"; return 1; }
-  print "auto on started $pr"
+  local lines=(${(f)line}) started=() failed=()
+  [[ $lines[1] == ccreview://* ]] || { print -r -- "${line:-auto error}"; return; }
+  [[ -n ${DRY:-} ]] && { print "auto on dry-run ${(j:, :)${(@)lines##* }}"; return; }
+  for line in $lines; do
+    AUTO=1 FOCUS=false CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password) \
+      $SIDAK_DIR/bin/claude-review-open "${line% *}" >/dev/null 2>&1 && started+=${line##* } || failed+=${line##* }
+    # ponytail: a pause between starts keeps their state.json writes apart; a lock in claude-review's mark() if they still collide.
+    sleep 3
+  done
+  print "auto on started ${(j:, :)started}${failed:+ (could not open cmux for ${(j:, :)failed})}"
+  (( ! $#failed ))
 }
 
 status() {

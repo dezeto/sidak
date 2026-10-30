@@ -25,7 +25,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
-- **Auto review**: opt-in, quick depth, one at a time, VIP authors first, at most ten a day.
+- **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, at most ten a day.
 - **Stale** PRs folded away, **VIP** authors pinned, **snooze** a card for a day, right-click for Open in Zed, Copy
   branch, Files changed, Checks, Copy link.
 - Reviews stay silent for everyone else: no labels, no comments beyond the review itself.
