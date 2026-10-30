@@ -23,8 +23,10 @@ func installHotKey(_ app: App) {
 let dir = URL(fileURLWithPath: Bundle.main.object(forInfoDictionaryKey: "SidakDir") as! String)
 // SIDAK_STATE points the watcher at a copy for a dry run (bin/pr-board, run from here, reads the same variable).
 let statePath = ProcessInfo.processInfo.environment["SIDAK_STATE"] ?? dir.appendingPathComponent("state.json").path
-// Notifications are off (the pill shows runs as they go); true requests authorization and posts settled reviews again.
+// Notifications are off (the gauge shows runs as they go); true requests authorization and posts settled reviews again.
 let notify = false
+// The island is off: the pill keeps the plain count while reviews run (the gauge turns amber); true stretches it to "crm#123 Deep 4:05 +1".
+let island = false
 
 final class Files: NSObject, WKURLSchemeHandler {
   let types = ["html": "text/html", "js": "text/javascript", "json": "application/json", "txt": "text/plain",
@@ -339,7 +341,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   var runTick: Timer?
   func showTitle() {
     var text = title
-    if let run = runs.max(by: { $0.at < $1.at }) {
+    if island, let run = runs.max(by: { $0.at < $1.at }) {
       let secs = max(0, Int(Date().timeIntervalSince1970 - run.at / 1000))
       let name = run.key.split(separator: "/").last.map(String.init) ?? run.key
       text = " \(name) \(run.quick ? "Skim" : "Deep") \(secs / 60):\(String(format: "%02d", secs % 60))" + (runs.count > 1 ? " +\(runs.count - 1)" : "")
