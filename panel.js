@@ -176,20 +176,19 @@ const profileSeg = document.querySelector('#settings [data-setting="profile"]');
 // Phone access: shown once config.json names the Access team, since the tunnel needs it.
 const phoneSeg = document.querySelector('#settings [data-setting="phone"]');
 const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
-// The footer names what a click runs and the list settings, in the pickers' words, as plain words that open the settings card.
-// The sync status (#status) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
+// The footer names what a click runs, in the pickers' words, as plain words that open the settings card: the profile only when it is
+// not config.defaultProfile, Auto only while on. Set-once settings (sync interval, stale cut-off) stay in the card.
+// The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
 function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) => el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: open settings`, onclick: () => toggleSettings(true) });
-  const profile = settings.profile || config.defaultProfile;
+  const profile = settings.profile !== config.defaultProfile && settings.profile;
   footConfig.replaceChildren(...[
     profile && pick(profile, 'Claude profile for new reviews'),
     pick(label('model'), 'Model for new reviews'),
     pick(label('effort'), 'Effort for new reviews'),
-    pick(`${settings.pollMinutes} min`, 'Sidak.app syncs this often'),
     settings.auto?.on && pick('Auto on', 'Auto review is on'),
-    settings.staleDays > 0 && pick(`Stale ${settings.staleDays} d`, 'PRs not updated for this long fold into Stale'),
   ].filter(Boolean));
 }
 function showSettings() {
@@ -582,7 +581,7 @@ async function render() {
   const syncStatus = syncError
     ? `Sync failed: ${syncError}`
     : syncedAt
-      ? `Synced ${new Date(syncedAt).toLocaleTimeString([], { timeStyle: 'short' })}`
+      ? new Date(syncedAt).toLocaleTimeString([], { timeStyle: 'short' })
       : 'Not synced yet';
   const index = Math.max(spaces.findIndex((s) => s.title === activeSpace), 0);
   const space = spaces[index];
