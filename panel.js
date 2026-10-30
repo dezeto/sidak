@@ -71,7 +71,6 @@ let activeSpace = saved('space', null);
 // Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
 const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
 // The pickers sit in the settings card; the sliders button's tooltip names the current picks.
-const picksButton = document.getElementById('picks');
 // Settings: the sliders button unfolds a card under the header and folds it again; Esc folds it too. The fold's height springs
 // between 0 and the card's, so the list below moves with it rather than jumping, while the card fades and grows from 0.98 at its top;
 // a second press mid-way turns it around from where it is.
@@ -79,12 +78,11 @@ const settingsCard = document.getElementById('settings');
 const settingsFold = document.getElementById('settings-fold');
 let folding = null;
 function toggleSettings(open = settingsFold.hidden) {
-  if (!folding && settingsFold.hidden === !open) return open && scrollTo(0, 0);
-  picksButton.setAttribute('aria-expanded', open);
+  if (!folding && settingsFold.hidden === !open) return;
+  for (const pick of footConfig.children) pick.ariaExpanded = open;
   const from = folding ? settingsFold.offsetHeight : open ? 0 : settingsCard.offsetHeight;
   folding?.cancel();
   settingsFold.hidden = false;
-  if (open) scrollTo(0, 0);
   if (!motion.matches) return void (settingsFold.hidden = !open);
   // Sidak.app grows its popover to the open height now, not after the spring.
   if (open) sendHeight(document.body.scrollHeight);
@@ -97,13 +95,10 @@ function toggleSettings(open = settingsFold.hidden) {
     settingsFold.hidden = !open;
   };
 }
-picksButton.onclick = () => toggleSettings();
 for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
   const key = seg.dataset.key;
   const show = () => {
     for (const button of seg.children) button.setAttribute('aria-pressed', button.value === picks[key]);
-    const pressed = [...document.querySelectorAll('#settings .seg[data-key] [aria-pressed="true"]')].map((button) => button.textContent);
-    picksButton.title = `Reviews use ${pressed.join(' · ')}`;
   };
   // settings.json carries the picks too: pr-board auto starts its reviews with them.
   seg.onclick = ({ target }) => {
@@ -169,21 +164,22 @@ const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]')
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
-// Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the sliders button wears an amber dot while on.
+// Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the footer says Auto on while on.
 const autoSeg = document.querySelector('#settings [data-setting="auto"]');
 // Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
 const profileSeg = document.querySelector('#settings [data-setting="profile"]');
 // Phone access: shown once config.json names the Access team, since the tunnel needs it.
 const phoneSeg = document.querySelector('#settings [data-setting="phone"]');
 const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
-// The footer names what a click runs, in the pickers' words, as plain words that open the settings card: the profile only when it is
-// not config.defaultProfile, Auto only while on. Set-once settings (sync interval, stale cut-off) stay in the card.
+// The footer names what a click runs, in the pickers' words, as plain words that open and close the settings card above them: the
+// profile always (its account pays), Auto only while on. Set-once settings (sync interval, stale cut-off) stay in the card.
 // The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
 function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
-  const pick = (text, what) => el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: open settings`, onclick: () => toggleSettings(true) });
-  const profile = settings.profile !== config.defaultProfile && settings.profile;
+  const pick = (text, what) =>
+    el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: settings`, ariaExpanded: !settingsFold.hidden, onclick: () => toggleSettings() });
+  const profile = settings.profile || config.defaultProfile;
   footConfig.replaceChildren(...[
     profile && pick(profile, 'Claude profile for new reviews'),
     pick(label('model'), 'Model for new reviews'),
@@ -203,7 +199,6 @@ function showSettings() {
     profileSeg.replaceChildren(...names.map((name) => el('button', { type: 'button', value: name, textContent: name })));
   }
   for (const button of profileSeg.children) button.setAttribute('aria-pressed', button.value === (settings.profile || config.defaultProfile));
-  picksButton.toggleAttribute('data-auto', autoOn);
   showVip();
   renderFoot();
 }
@@ -683,7 +678,7 @@ document.addEventListener('keydown', (event) => {
   // Esc folds the settings card away from anywhere but the search field, whose own Esc clears it.
   if (event.key === 'Escape' && !settingsFold.hidden && event.target !== search && !help.open) {
     toggleSettings(false);
-    return picksButton.focus();
+    return footConfig.firstChild?.focus();
   }
   // ⌘← / ⌘→ pick a profile the way a swipe does: left the Inbox, right Mine.
   if (event.metaKey && !editing && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {

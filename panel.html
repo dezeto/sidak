@@ -77,22 +77,23 @@
   /* Visually hidden: keeps a top heading for assistive tech. */
   h1 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .find { display: flex; align-items: center; gap: 6px; }
-  /* Round glass buttons, 30 px: the profile switch, search while folded, settings. */
-  #view, #picks, #pin, .search { box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; padding: 0; border-radius: 15px; color: var(--lg-ink); }
-  /* Settings open: the button turns solid ink, a pressed toggle. Amber dot while auto review is on: Sidak.app starts reviews without a click. */
-  #picks { position: relative; }
-  #picks[aria-expanded='true'], #pin[aria-pressed='true'] { border-color: var(--lg-ink); background: var(--lg-ink); color: Canvas; }
+  /* Round glass buttons, 30 px: the profile switch, search while folded, pin. */
+  #view, #pin, .search { box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex: none; width: 30px; height: 30px; padding: 0; border-radius: 15px; color: var(--lg-ink); }
+  /* Pinned: the button turns solid ink, a pressed toggle. */
+  #pin[aria-pressed='true'] { border-color: var(--lg-ink); background: var(--lg-ink); color: Canvas; }
   /* Pin: Sidak.app only. Pinned, the board floats as a window without a title bar whose top 14 px drag it: a grip sits there,
      and the header grows by that strip so nothing clickable is under it. */
   :root:not([data-app]) #pin { display: none; }
   :root[data-pinned='1'] header { padding-top: 28px; }
   :root[data-pinned='1'] header::before { content: ''; position: absolute; top: 5px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--lg-ink-muted); pointer-events: none; }
-  #picks[data-auto]::after { content: ''; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 50%; background: var(--dot-amber); box-shadow: 0 0 0 1.5px Canvas; }
-  /* Search: a full-width capsule field between the profile switch and the buttons. */
-  .search { flex: 1; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
+  /* Search: rarely used, so a round glass button beside Pin until a tap or / opens it. Then the glass stretches into a field across
+     the row, and folds back once it is empty and left (Esc on an empty field). */
+  .search { flex: 1; max-width: 100%; margin-left: auto; justify-content: flex-start; gap: 8px; padding: 0 12px; cursor: text; }
+  .search:not(:focus-within):has(#search:placeholder-shown) { max-width: 30px; gap: 0; padding: 0; justify-content: center; cursor: pointer; }
+  .search:not(:focus-within):has(#search:placeholder-shown) #search { flex: 0 0 0; }
+  .search:focus-within { background: var(--hover); }
   .search .icon { width: 15px; height: 15px; }
   #search { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--lg-ink); font: inherit; font-size: 12.5px; outline: none; }
-  .search:has(#search:focus-visible) { outline: 2px solid color-mix(in srgb, var(--lg-ink) 40%, transparent); outline-offset: 2px; }
   #search::placeholder { color: var(--lg-ink-muted); }
   #search::-webkit-search-cancel-button { -webkit-appearance: none; }
   .pr[hidden] { display: none; }
@@ -122,17 +123,20 @@
   /* Four tabs on my own PRs: tighter, so two-digit counts still fit; past that a label ellipsizes. In Sidak.app the Pin button
      takes a slot too, so there the round buttons are 28 px and my tabs a size smaller. */
   #tabs .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  :root[data-app] :is(#view, #picks, #pin, .search) { width: 28px; height: 28px; }
+  :root[data-app] :is(#view, #pin, .search) { width: 28px; height: 28px; }
+  :root[data-app] .search:not(:focus-within):has(#search:placeholder-shown) { max-width: 28px; }
   :is(#tabs, .seg) button:hover { color: var(--lg-ink); }
   :is(#tabs, .seg) button[aria-pressed='true'], .space[aria-pressed='true'] { background: var(--lg-bg-pressed); color: var(--lg-ink); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); }
   .n { font-variant-numeric: tabular-nums; color: var(--lg-ink-muted); }
   #tabs .n[data-live] { color: var(--amber); }
   @media (prefers-contrast: more) { :is(#tabs, .seg) button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px CanvasText; } }
 
-  /* Settings: a glass card that unfolds under the header, one line per setting. Its fold clips it while panel.js animates the height. */
+  /* Settings: a glass card that unfolds out of the footer (a tap on its words), one line per setting. Its fold clips it while panel.js
+     animates the height; it spans the footer's row and drops the footer's small muted type. */
+  #settings-fold { flex: 0 0 100%; font-size: 13px; font-weight: 400; line-height: 1.35; color: var(--lg-ink); white-space: normal; font-variant-numeric: normal; }
   #settings {
-    margin: 0 14px; padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
-    box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 0;
+    margin: -4px -6px 12px; padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
+    box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 100%;
   }
   #settings-fold.folding { overflow: hidden; }
   .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
@@ -324,14 +328,14 @@
   [data-state='DRAFT'] { --state: var(--grey); }
   .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
 
-  /* Footer: what a click runs and the list settings as plain words (each opens the settings card), then the sync status and its button. */
+  /* Footer: what a click runs as plain words (each opens the settings card above them), then the last sync's time and its button. */
   #foot {
-    position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center; gap: 14px; padding: 12px 20px 14px;
+    position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 12px 20px 14px;
     font-size: 11px; font-weight: 500; line-height: 14px; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums;
   }
   #foot-config { display: flex; flex: none; gap: 14px; }
   #foot .pick { min-height: 28px; margin-block: -7px; padding: 0; font-size: inherit; }
-  #foot .pick:hover { color: var(--lg-ink); }
+  #foot .pick:is(:hover, [aria-expanded='true']) { color: var(--lg-ink); }
   #status { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: end; }
   #status[data-error='true'] { color: var(--red); }
   #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
@@ -343,6 +347,7 @@
   @media (prefers-reduced-motion: no-preference) {
     .glass, .review { transition: background-color var(--lg-duration-fast), color var(--lg-duration-fast), transform var(--lg-duration-normal) var(--lg-easing-spring); }
     :is(button.glass, .review):active { transform: scale(0.96); }
+    .search { transition: max-width var(--lg-duration-normal) var(--lg-easing-spring), padding var(--lg-duration-normal) var(--lg-easing-spring), background-color var(--lg-duration-fast); }
     summary::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring); }
     /* Tabs: one glass lozenge under the open tab glides to the next. The tabs are equal width, so panel.js markActive places it
        with an index (--i) of a count (--n), no measuring; it glides only on a tab pick (data-glide="move"), not on a render. */
@@ -418,13 +423,13 @@
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
       <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
     </label>
-    <button id="picks" class="glass" type="button" aria-expanded="false" aria-controls="settings" aria-label="Settings"><svg class="icon" aria-hidden="true"><use href="#i-sliders" /></svg></button>
     <button id="pin" class="glass" type="button" aria-pressed="false" aria-label="Keep the board floating" title="Keep the board floating (p)"><svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg></button>
   </div>
   <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
   <nav id="spaces" aria-label="Spaces"></nav>
 </header>
-<div id="settings-fold" hidden><section id="settings" aria-label="Settings">
+<main id="list"></main>
+<footer id="foot"><div id="settings-fold" hidden><section id="settings" aria-label="Settings">
   <div class="set">
     <span class="l">Model</span>
     <div class="seg" data-key="model" role="group" aria-label="Model for new reviews">
@@ -470,8 +475,7 @@
     <div class="chips"><span id="vip-list"></span><input id="vip" name="vip" type="text" spellcheck="false" autocomplete="off" placeholder="login or email…" /></div>
   </div>
 </section></div>
-<main id="list"></main>
-<footer id="foot"><span id="foot-config"></span><span id="status"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
+<span id="foot-config"></span><span id="status"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>
   <button type="button" data-do="branch">Copy branch</button>
