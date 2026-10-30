@@ -24,8 +24,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
 - **Follow-ups**: a reviewed PR comes back to the Inbox when its author pushes after your review or re-requests you; Reviewed
-  keeps the ones waiting on their author. Each card shows what to do next, and a tap opens the review's TL;DR (what the PR does,
-  what it found).
+  keeps the ones waiting on their author. A card says why it is back (New commits, Re-requested you) or your verdict, and a tap on
+  that word opens the review's TL;DR (what the PR does, what it found, what next).
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it

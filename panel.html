@@ -52,7 +52,7 @@
      preview on the long press that opens the card menu. */
   :root[data-remote] body { width: auto; }
   :root[data-remote] .pr .actions { display: flex; }
-  :root[data-remote] .pr[data-acts] :is(.avatars, .time) { display: none; }
+  :root[data-remote] .pr[data-acts] .time { display: none; }
   :root[data-remote] .pr[data-acts='3'] .pill { display: none; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }
@@ -243,7 +243,8 @@
   .link img { width: 16px; height: 16px; flex: none; border-radius: 3px; }
   .link span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
-  /* Rows, 52 px: a status dot, the title over a meta line, then reviewers and age; hover or j/k focus swaps those for the buttons. */
+  /* Rows, 52 px: a status dot, the title over a meta line (one status word, repo #n, author), then the age; hover or j/k focus swaps
+     the age for the buttons. */
   .pr {
     display: grid; grid-template-columns: 8px minmax(0, 1fr) auto auto; row-gap: 2px; align-items: center;
     box-sizing: border-box; min-height: 52px; padding: 8px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
@@ -273,38 +274,31 @@
   .pill[data-group='waiting'] { --state: var(--amber); }
   .icon.vip { width: 11px; height: 11px; margin-right: 5px; vertical-align: -1px; color: var(--gold); }
   .pr[data-state='DRAFT'] { opacity: 0.7; }
-  /* Skim / Deep take the avatars' and age's spot on hover or j/k focus. */
+  /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
   .pr:is(:hover, :focus-within) .actions { display: flex; }
-  .pr[data-acts]:is(:hover, :focus-within) :is(.avatars, .time) { display: none; }
+  .pr[data-acts]:is(:hover, :focus-within) .time { display: none; }
   /* Three buttons (my own PR: Fix / Nudge / Merge first): the pill steps aside for the title, and the capsules tighten. */
   .pr[data-acts='3']:is(:hover, :focus-within) .pill { display: none; }
   .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
   .time { grid-column: 4; grid-row: 1 / span 2; font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
-  /* The meta line: words 10 px apart, no separators. */
+  /* The meta line: words 10 px apart, no separators. The status word is in its state's colour, the accent when the PR is back. */
   .meta { grid-row: 2; display: flex; align-items: center; gap: 10px; min-height: 15px; font-size: 11.5px; line-height: 15px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
   .meta > :empty { display: none; }
   .text { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .state:not(:empty) { margin-right: 10px; }
   .info > span + span { margin-left: 10px; }
   .state { font-weight: 600; color: var(--state); }
+  .state[data-live] { color: var(--lg-accent); }
   .checks { font-size: 11px; font-weight: 700; color: var(--state); }
-  /* Reviewed: the Next line under the meta line, in the accent when the PR moved since the review; a click opens What and Found above it.
-     The labels keep a column of their own, the chevron a third one when there is more to open. */
-  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); text-align: left; }
-  .tldr > span { display: contents; }
-  .tldr b { grid-column: 1; font-weight: 600; color: var(--lg-ink-muted); }
-  .tldr span span { grid-column: 2; }
-  .tldr[aria-expanded='false'] > :not(.next) { display: none; }
-  .tldr[aria-expanded='false'] .next > span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .next[data-live] > span { font-weight: 600; color: var(--lg-accent); }
-  .tldr:has(> :nth-child(2)) .next::after { content: '\25BE'; grid-column: 3; color: var(--lg-ink-muted); transition: rotate var(--lg-duration-fast); }
-  .tldr[aria-expanded='true'] .next::after { rotate: 180deg; }
-  .avatars { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; }
-  .avatars:not(:empty) { margin-right: 10px; }
-  .avatars img { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--state); }
-  .avatars img + img { margin-left: -3px; }
-  .more { margin-left: 5px; font-size: 11px; color: var(--lg-ink-muted); }
+  /* Reviewed: the status word, with a chevron, opens the reviewer's TL;DR under the card (What, Found, Next); the labels keep a
+     column of their own. */
+  button.state { padding: 0; font-size: inherit; font-weight: 600; color: var(--state); }
+  button.state::after { content: '\25BE'; display: inline-block; margin-left: 4px; color: var(--lg-ink-muted); transition: rotate var(--lg-duration-fast); }
+  button.state[aria-expanded='true']::after { rotate: 180deg; }
+  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
+  .tldr[hidden] { display: none; }
+  .tldr b { font-weight: 600; color: var(--lg-ink-muted); }
   .claude { font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--state); cursor: pointer; }
   .claude:hover { text-decoration: underline; }
   .claude svg { width: 13px; height: 13px; display: block; }
@@ -319,7 +313,6 @@
   .review:is(.merge, .fix):hover, .actions:not(:has(.merge, .fix)) > .review[data-depth='full']:hover { background: color-mix(in srgb, var(--lg-accent) 72%, #000); }
   .review:is(.merge, .fix) kbd, .actions:not(:has(.merge, .fix)) > .review[data-depth='full'] kbd { background: rgba(0, 0, 0, 0.25); color: rgba(255, 255, 255, 0.9); }
   .review:disabled { opacity: 0.5; cursor: default; }
-  .claude[data-state='reviewed'] { --state: var(--green); }
   .claude[data-state='failed'] { --state: var(--red); }
   .claude[data-state='queued'], .claude[data-state='running'] { --state: var(--amber); }
 
@@ -327,7 +320,7 @@
   [data-state='CHANGES_REQUESTED'], [data-state='FAILURE'], [data-state='ERROR'] { --state: var(--red); }
   [data-state='REVIEW_REQUIRED'], [data-state='PENDING'], [data-state='EXPECTED'] { --state: var(--amber); }
   [data-state='DRAFT'] { --state: var(--grey); }
-  .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
+  [data-state='COMMENTED'] { --state: var(--lg-ink-muted); }
 
   /* Footer: what a click runs as plain words (each opens the settings card above them), then the last sync's time and its button. */
   #foot {
@@ -519,7 +512,7 @@
     <svg class="icon" aria-hidden="true"><use href="#i-pr" /></svg>
     <span class="title"></span>
     <span class="time"></span>
-    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info"></span></span><span class="claude"></span></span><span class="avatars"></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only" aria-keyshortcuts="s">Skim<kbd aria-hidden="true">s</kbd></button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings" aria-keyshortcuts="d">Deep<kbd aria-hidden="true">d</kbd></button></span>
+    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info"></span></span><span class="claude"></span></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only" aria-keyshortcuts="s">Skim<kbd aria-hidden="true">s</kbd></button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings" aria-keyshortcuts="d">Deep<kbd aria-hidden="true">d</kbd></button></span>
   </a>
 </template>
 <script src="pr.js"></script>

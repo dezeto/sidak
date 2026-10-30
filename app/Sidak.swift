@@ -44,6 +44,12 @@ final class Files: NSObject, WKURLSchemeHandler {
   func webView(_ w: WKWebView, stop task: WKURLSchemeTask) {}
 }
 
+// Borderless, so the glass draws the panel's only edge (a titled window adds its own frame, with another corner radius, beside it);
+// a borderless panel takes keyboard focus only when it says it can.
+final class GlassPanel: NSPanel {
+  override var canBecomeKey: Bool { true }
+}
+
 final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
   // One menu-bar item: the inbox count; Mine is a view inside the board (Tab or a sideways swipe).
   var item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -145,11 +151,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   var dragging = false
   var autoHidden = Date.distantPast
   lazy var panel: NSPanel = {
-    let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 640), styleMask: [.nonactivatingPanel, .fullSizeContentView, .titled, .closable], backing: .buffered, defer: false)
-    p.titlebarAppearsTransparent = true
-    p.titleVisibility = .hidden
-    // No traffic lights: they would sit on the page's header. Closing (performClose) still unpins.
-    for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { p.standardWindowButton(b)?.isHidden = true }
+    let p = GlassPanel(contentRect: NSRect(x: 0, y: 0, width: 440, height: 640), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     p.isMovableByWindowBackground = true
     // Floating, not popUpMenu, so the page's confirm() alerts (modal panel level) still come up above it.
     p.level = .floating
@@ -158,6 +160,8 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     p.isReleasedWhenClosed = false
     p.isOpaque = false
     p.backgroundColor = .clear
+    // Borderless windows have none by default; it takes the glass's shape (show and each resize invalidate it).
+    p.hasShadow = true
     p.delegate = self
     p.contentView = glassView(radius: 30)
     // The web view takes every click, so the page's top 14 px are the strip that moves the panel (and pins it, see windowDidMove).
@@ -166,6 +170,12 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       guard e.window === p, e.locationInWindow.y > p.frame.height - 14 else { return e }
       dragging = true
       p.performDrag(with: e)
+      return nil
+    }
+    // ⌘W unpins, as closing the pinned panel did while it had a title bar.
+    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [unowned self] e in
+      guard e.window === p, pinned, e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, e.charactersIgnoringModifiers == "w" else { return e }
+      setPinned(false)
       return nil
     }
     return p
@@ -198,6 +208,12 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     if #available(macOS 26, *) {
       let g = NSGlassEffectView()
       g.cornerRadius = radius
+      // Clipped to its shape: the glass's own soft shadow would tint the window's square corners, and the window shadow (taken from
+      // the window's alpha) would then draw a second, square edge around the rounded one.
+      g.wantsLayer = true
+      g.layer?.cornerRadius = radius
+      g.layer?.cornerCurve = .continuous
+      g.layer?.masksToBounds = true
       g.tintColor = NSColor(name: nil) { $0.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? NSColor(white: 0, alpha: 0.28) : NSColor(white: 1, alpha: 0.12) }
       return g
     }
@@ -225,10 +241,6 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     let f = item.button?.window?.frame ?? .zero
     let screen = item.button?.window?.screen?.visibleFrame ?? NSScreen.main?.visibleFrame ?? .zero
     return NSPoint(x: min(max(f.midX - 220, screen.minX + 8), screen.maxX - 448), y: f.minY - 6)
-  }
-  func windowShouldClose(_ w: NSWindow) -> Bool {
-    if w === panel { setPinned(false); return false }
-    return true
   }
   func windowDidMove(_ n: Notification) {
     guard n.object as? NSWindow === panel else { return }
@@ -393,14 +405,17 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   // shim.js → here. "review": run the opener like the Arc native host does.
   func userContentController(_ ucc: WKUserContentController, didReceive m: WKScriptMessage, replyHandler: @escaping (Any?, String?) -> Void) {
     guard let body = m.body as? [String: Any], let kind = body["kind"] as? String else { replyHandler(nil, "bad message"); return }
-    // sidakheight://<px>: the page's height after a render. The panel fits it (240 to 760 px) and keeps its top edge.
+    // sidakheight://<px>: the page's height after a render. The panel fits it (120 px, header and footer, to 760 px) and keeps its
+    // top edge; the shadow follows once it has.
     // Not an action: nothing runs and nothing closes.
     if let url = body["url"] as? String, url.hasPrefix("sidakheight://") {
       let px = Double(url.dropFirst("sidakheight://".count).trimmingCharacters(in: CharacterSet(charactersIn: "/"))) ?? 0
       NSLog("page height: %@", url)
       if px > 0 {
-        let height = min(max(px, 240), 760)
-        panel.animator().setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - height, width: 440, height: height), display: true)
+        let height = min(max(px, 120), 760)
+        NSAnimationContext.runAnimationGroup({ _ in
+          panel.animator().setFrame(NSRect(x: panel.frame.minX, y: panel.frame.maxY - height, width: 440, height: height), display: true)
+        }, completionHandler: { [self] in panel.invalidateShadow() })
       }
       replyHandler(["ok": true], nil)
       return

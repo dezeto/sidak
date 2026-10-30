@@ -33,7 +33,6 @@ const rowTemplate = document.getElementById('pr').content.firstElementChild;
 
 // No word for REVIEW_REQUIRED: the section label (To review) and the amber dot say it.
 const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes requested', REVIEW_REQUIRED: '', DRAFT: 'Draft' };
-const REVIEWER_LABELS = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', PENDING: 'review pending' };
 // The one button on my own PR, by authorState().action: [label, tooltip, key]. The opener runs ccfix / ccnudge / ccmerge / ccready.
 const AUTHOR_ACTIONS = {
   fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review', 'f'],
@@ -41,16 +40,10 @@ const AUTHOR_ACTIONS = {
   merge: ['Merge', 'Squash-merge and delete the branch', 'm'],
   ready: ['Mark ready', 'Mark ready for review', 'r'],
 };
-const CHECKS = {
-  SUCCESS: ['✓', 'Checks passed'],
-  FAILURE: ['✕', 'Checks failed'],
-  ERROR: ['✕', 'Checks errored'],
-  PENDING: ['●', 'Checks running'],
-  EXPECTED: ['●', 'Checks expected'],
-};
-// state.json verdict (claude-review): the state of my posted review.
-const VERDICTS = { approved: 'approved', changes: 'changes requested', commented: 'commented' };
-const MAX_AVATARS = 4;
+// Only failing checks get a glyph: passing or running ones ask nothing of me.
+const CHECKS = { FAILURE: ['✕', 'Checks failed'], ERROR: ['✕', 'Checks errored'] };
+// state.json verdict (claude-review): the state of my posted review, as [status word, its colour's data-state].
+const VERDICTS = { approved: ['Approved', 'APPROVED'], changes: ['Changes requested', 'CHANGES_REQUESTED'], commented: ['Commented', 'COMMENTED'] };
 const UNITS = [['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
 const relative = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
 
@@ -280,15 +273,9 @@ function collapsible({ key, className, iconId, title, children }) {
   return details;
 }
 
-function avatar(reviewer) {
-  const label = `${reviewer.login}: ${REVIEWER_LABELS[reviewer.state]}`;
-  const img = el('img', { src: reviewer.avatarUrl, alt: label, title: label });
-  img.dataset.state = reviewer.state;
-  return img;
-}
-
-// The cards whose TL;DR is open, kept across the re-render every sync does.
+// The cards whose TL;DR is open, kept across the re-render every sync does; ids tie each toggle to its block.
 const openTldrs = new Set();
+let tldrIds = 0;
 function prRow(pr) {
   const row = rowTemplate.cloneNode(true);
   row.href = pr.url;
@@ -296,30 +283,42 @@ function prRow(pr) {
   row.dataset.state = pr.review;
   row.querySelector('.title').textContent = pr.title;
   row.querySelector('.time').textContent = ago(pr.updatedAt);
-  row.querySelector('.state').textContent = REVIEW_LABELS[pr.review];
-  // The meta line is words 10 px apart (CSS), no separators. A VIP author gets a gold star in front of the title.
+  // The meta line is one status word, then repo #n and author, 10 px apart (CSS), no separators. A VIP author gets a gold star in
+  // front of the title.
   const info = row.querySelector('.info');
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
-  info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author, pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', VERDICTS[pr.verdict], pr.auto && 'auto'));
+  info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author));
   if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
-  // Reviewed: the Next line, live when the PR moved since the review; a click on it opens the reviewer's What and Found above it.
-  // The TL;DR is the top of the reviewer's handoff, which claude-review copies into state.json.
-  const live = { requested: 'Re-requested your review', commits: 'New commits since your review' }[pr.followUp?.why];
-  if (pr.claude === 'reviewed' && (pr.tldr || live)) {
-    const lines = new Map([...(pr.tldr ?? '').matchAll(/^[-*]?[ \t]*(What|Found|Next):[ \t]*(.+)$/gm)].map(([, label, text]) => [label, text]));
-    const next = live ?? lines.get('Next');
+  // The status word: why a PR is back since my review (in the accent), else my verdict on one I reviewed, else its review state.
+  // How and by whom it was reviewed goes in the tooltip.
+  const live = { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
+  const verdict = pr.claude === 'reviewed' ? VERDICTS[pr.verdict] : null;
+  const state = row.querySelector('.state');
+  state.textContent = live ?? verdict?.[0] ?? REVIEW_LABELS[pr.review];
+  if (live) state.dataset.live = '';
+  else if (verdict) state.dataset.state = verdict[1];
+  const how = [pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', pr.auto && 'auto'].filter(Boolean);
+  if (how.length) state.title = [state.textContent, ...how].join(' · ');
+  // A TL;DR (the top of the reviewer's handoff, which claude-review copies into state.json) turns the status word into its toggle:
+  // What, Found and Next open under the card, Next being the live reason when the PR moved since. My own PRs show no status word.
+  if (pr.claude === 'reviewed' && pr.tldr && !pr.mine) {
+    const lines = new Map([...pr.tldr.matchAll(/^[-*]?[ \t]*(What|Found|Next):[ \t]*(.+)$/gm)].map(([, label, text]) => [label, text]));
+    const next = { requested: 'Re-requested your review', commits: 'New commits since your review' }[pr.followUp?.why] ?? lines.get('Next');
     lines.delete('Next');
     if (next) lines.set('Next', next);
-    const tldr = row.appendChild(el('button', { className: 'tldr', type: 'button' }));
-    for (const [label, text] of lines) {
-      const line = tldr.appendChild(el('span', { className: label === 'Next' ? 'next' : '' }));
-      line.append(el('b', { textContent: label }), el('span', { textContent: text }));
-    }
-    if (live) tldr.lastChild.dataset.live = '';
+    const tldr = row.appendChild(el('div', { className: 'tldr', id: `tldr-${++tldrIds}` }));
+    for (const [label, text] of lines) tldr.append(el('b', { textContent: label }), el('span', { textContent: text }));
+    const toggle = el('button', { type: 'button', className: 'state', textContent: state.textContent, title: state.title });
+    Object.assign(toggle.dataset, state.dataset);
+    toggle.setAttribute('aria-controls', tldr.id);
+    state.replaceWith(toggle);
     const key = `${repoOf(pr)}#${pr.number}`;
-    const show = () => tldr.setAttribute('aria-expanded', openTldrs.has(key));
+    const show = () => {
+      toggle.setAttribute('aria-expanded', openTldrs.has(key));
+      tldr.hidden = !openTldrs.has(key);
+    };
     show();
-    tldr.onclick = (event) => {
+    toggle.onclick = (event) => {
       event.preventDefault();
       event.stopPropagation();
       if (!openTldrs.delete(key)) openTldrs.add(key);
@@ -330,7 +329,8 @@ function prRow(pr) {
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
   if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
-  const [glyph = '', label = ''] = CHECKS[pr.checks] ?? [];
+  // My own PRs' reason line already names failing checks.
+  const [glyph = '', label = ''] = (!pr.mine && CHECKS[pr.checks]) || [];
   const checks = Object.assign(row.querySelector('.checks'), { textContent: glyph, title: label });
   checks.dataset.state = pr.checks ?? '';
 
@@ -357,11 +357,11 @@ function prRow(pr) {
   // Back in the Inbox after my review: its dot says to review again.
   if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
-  // The column already says running/reviewed; the badge is an icon or the word "failed". Running it opens cmux; reviewed it lets the
-  // card's link open the PR (state.json has no review id); failed it skims again, like s.
-  claude.replaceChildren(...(pr.claude === 'running' ? [icon('i-play')] : pr.claude === 'reviewed' ? [icon('i-done')] : pr.claude === 'failed' ? ['failed'] : []));
+  // The column already says running/reviewed, so only a run and a failure get a badge: running it opens cmux, failed it skims
+  // again, like s.
+  claude.replaceChildren(...(pr.claude === 'running' ? [icon('i-play')] : pr.claude === 'failed' ? ['failed'] : []));
   claude.dataset.state = pr.claude ?? '';
-  claude.title = { reviewed: 'Open the reviews on GitHub', failed: 'Review failed: skim again (s)' }[pr.claude] ?? 'Open in cmux';
+  claude.title = pr.claude === 'failed' ? 'Review failed: skim again (s)' : 'Open in cmux';
   const skim = (event) => {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
@@ -395,11 +395,6 @@ function prRow(pr) {
   for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
   // The label is the button's first text node; its key hint stays.
   if (pr.claude === 'reviewed') actions.lastElementChild.firstChild.data = 'Again';
-
-  const avatars = row.querySelector('.avatars');
-  avatars.append(...pr.reviewers.slice(0, MAX_AVATARS).map(avatar));
-  const hidden = pr.reviewers.length - MAX_AVATARS;
-  if (hidden > 0) avatars.append(el('span', { className: 'more', textContent: `+${hidden}` }));
   return row;
 }
 
