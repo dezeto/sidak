@@ -41,7 +41,7 @@ const AUTHOR_ACTIONS = {
   ready: ['Mark Ready', 'Mark ready for review', 'r'],
 };
 // Only failing checks get a glyph: passing or running ones ask nothing of me.
-const CHECKS = { FAILURE: ['✕', 'Checks failed'], ERROR: ['✕', 'Checks errored'] };
+const CHECKS = { FAILURE: 'Checks failed', ERROR: 'Checks errored' };
 // state.json verdict (claude-review): the state of my posted review, as [status word, its colour's data-state].
 const VERDICTS = { approved: ['Approved', 'APPROVED'], changes: ['Changes requested', 'CHANGES_REQUESTED'], commented: ['Commented', 'COMMENTED'] };
 const UNITS = [['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
@@ -289,7 +289,7 @@ function prRow(pr) {
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author));
   if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
-  // The status word: why a PR is back since my review (in the accent), else my verdict on one I reviewed, else its review state.
+  // The status word: why a PR is back since my review (amber, like its dot), else my verdict on one I reviewed, else its review state.
   // How and by whom it was reviewed goes in the tooltip.
   const live = { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
   const verdict = pr.claude === 'reviewed' ? VERDICTS[pr.verdict] : null;
@@ -330,8 +330,10 @@ function prRow(pr) {
   if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
   // My own PRs' reason line already names failing checks.
-  const [glyph = '', label = ''] = (!pr.mine && CHECKS[pr.checks]) || [];
-  const checks = Object.assign(row.querySelector('.checks'), { textContent: glyph, title: label });
+  const label = (!pr.mine && CHECKS[pr.checks]) || '';
+  const checks = Object.assign(row.querySelector('.checks'), { title: label, ariaLabel: label || null });
+  if (label) checks.append(icon('i-x'));
+  if (label) checks.setAttribute('role', 'img');
   checks.dataset.state = pr.checks ?? '';
 
   // bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
