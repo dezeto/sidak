@@ -127,8 +127,8 @@ async function loadConfig() {
   return res?.ok ? res.json().catch(() => null) : null;
 }
 
-// settings.json sits next to state.json and is shared with Sidak.app and bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze, pollMinutes }.
-// pollMinutes: how often Sidak.app's timer syncs.
+// settings.json sits next to state.json and is shared with Sidak.app and bin/pr-board: { staleDays, vip, auto, model, effort, profile, snooze, pollMinutes, phone }.
+// pollMinutes: how often Sidak.app's timer syncs. phone: false stops Sidak.app's tunnel (config.json remote); unset means on.
 // Read like reviewState(), written through the opener (ccset://); localStorage caches it so the header renders before the fetch.
 // No profile picked yet: config.defaultProfile.
 const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, pollMinutes: 2 };
@@ -173,6 +173,9 @@ const vipList = document.getElementById('vip-list');
 const autoSeg = document.querySelector('#settings [data-setting="auto"]');
 // Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
 const profileSeg = document.querySelector('#settings [data-setting="profile"]');
+// Phone access: shown once config.json names the Access team, since the tunnel needs it.
+const phoneSeg = document.querySelector('#settings [data-setting="phone"]');
+const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
 // The footer names what a click runs and the list settings, in the pickers' words, as plain words that open the settings card.
 // The sync status (#status) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
@@ -194,6 +197,8 @@ function showSettings() {
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
+  phoneSeg.parentElement.hidden = !config.remote?.team;
+  for (const button of phoneSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === phoneOn());
   const names = Object.keys(config.profiles);
   if (names.join() !== [...profileSeg.children].map((button) => button.value).join()) {
     profileSeg.replaceChildren(...names.map((name) => el('button', { type: 'button', value: name, textContent: name })));
@@ -208,6 +213,7 @@ staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Num
 // Turning it on writes the picks as well, so the runs use the model and effort shown here.
 autoSeg.onclick = ({ target }) => target.value && saveSettings({ auto: { ...settings.auto, on: target.value === 'on' }, ...picks });
 profileSeg.onclick = ({ target }) => target.value && saveSettings({ profile: target.value });
+phoneSeg.onclick = ({ target }) => target.value && saveSettings({ phone: target.value === 'on' });
 // VIP authors: a chip per login or email, × drops it; Enter in the field (or leaving it) adds what was typed. settings.vip stays a list of strings.
 function showVip() {
   if (vipList.dataset.shown === settings.vip.join('\n')) return;

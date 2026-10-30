@@ -82,11 +82,12 @@ The board works from a phone through a Cloudflare Tunnel, actions included: a ta
 cmux on the Mac. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
 valid Cloudflare Access login.
 
-1. In Cloudflare Zero Trust, add a self-hosted Access application for your hostname with an Allow policy for your email.
+1. In Cloudflare Zero Trust, add a self-hosted Access application for your hostname with an Allow policy for your email, and add
+   One-time PIN under Integrations > Identity providers, so the login is a code sent to that email.
 2. Add to `config.json`, with the team name (`<team>.cloudflareaccess.com`) and the app's Application Audience (AUD) tag:
    ```json
    "remote": { "hostname": "sidak.example.dev", "port": 8787, "tunnel": "sidak", "team": "<team>", "aud": "<aud tag>" }
    ```
 3. Run `./install.sh`: it creates the tunnel and its DNS record, and Sidak.app restarts with the tunnel up.
 
-Without `team` and `aud` the server runs but the tunnel stays off. The tunnel log is `~/Library/Logs/Sidak-tunnel.log`.
+Phone in the settings card switches the tunnel off and on. Without `team` and `aud` the server runs but the tunnel stays off. The tunnel log is `~/Library/Logs/Sidak-tunnel.log`.

@@ -83,9 +83,10 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     installHotKey(self)
     if let data = try? Data(contentsOf: dir.appendingPathComponent("config.json")),
        let r = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["remote"] as? [String: Any] {
-      let port = UInt16(r["port"] as? Int ?? 8787)
-      serve(port: port)
-      runTunnel(r, port: port)
+      remotePort = UInt16(r["port"] as? Int ?? 8787)
+      remote = r
+      serve(port: remotePort)
+      applyPhone()
     }
     // Launch at login so the gauge is always up; switch it off in System Settings > General > Login Items.
     if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
@@ -331,11 +332,14 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     return (text, p.terminationStatus)
   }
 
+  func savedSettings() -> [String: Any]? {
+    (try? Data(contentsOf: dir.appendingPathComponent("settings.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+  }
+
   // pr-board runs every settings.json pollMinutes (1, 2, 5 or 10; default 2): read at launch and again when the page saves settings.
   var pollTimer: Timer?
   func schedulePoll() {
-    let settings = (try? Data(contentsOf: dir.appendingPathComponent("settings.json"))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-    let minutes = settings?["pollMinutes"] as? Int ?? 2
+    let minutes = savedSettings()?["pollMinutes"] as? Int ?? 2
     let interval = TimeInterval([1, 2, 5, 10].contains(minutes) ? minutes : 2) * 60
     pollTimer?.invalidate()
     // With the phone on, the poll also syncs the app's page: WebKit pauses its own 5-minute alarm while the panel is closed.
@@ -440,7 +444,8 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       DispatchQueue.main.async {
         done(p.terminationStatus == 0, text)
         // A settings change (auto on/off, stale cut-off, poll interval) redraws the gauge now and restarts the poll timer.
-        if url.hasPrefix("ccset:") { self.counts(); self.schedulePoll() }
+        // Phone off stops the tunnel a moment later, so a switch-off from the phone still gets its reply.
+        if url.hasPrefix("ccset:") { self.counts(); self.schedulePoll(); DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.applyPhone() } }
       }
     }
   }
@@ -523,7 +528,13 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
 
   // cloudflared for the phone, only once config.json names the Access team and app (remote.team, remote.aud): it checks that login on
   // every request before passing it on. A killed app leaves its cloudflared behind, so a launch stops any old one first.
-  var tunnel: Process?
+  var tunnel: Process?, remote: [String: Any]?, remotePort: UInt16 = 8787
+  // settings.json phone (default on) runs or stops the tunnel; the server stays up, since only cloudflared reaches it.
+  func applyPhone() {
+    guard let r = remote else { return }
+    if savedSettings()?["phone"] as? Bool ?? true { if tunnel == nil { runTunnel(r, port: remotePort) } }
+    else if let t = tunnel { tunnel = nil; t.terminationHandler = nil; t.terminate() }
+  }
   let tunnelConfig = NSTemporaryDirectory() + "sidak-tunnel.yml"
   func runTunnel(_ r: [String: Any], port: UInt16) {
     if tunnel == nil { let k = Process(); k.executableURL = URL(fileURLWithPath: "/usr/bin/pkill"); k.arguments = ["-f", tunnelConfig]; try? k.run(); k.waitUntilExit() }
@@ -545,7 +556,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     let p = Process()
     p.executableURL = URL(fileURLWithPath: bin)
     p.arguments = ["tunnel", "--no-autoupdate", "--logfile", NSHomeDirectory() + "/Library/Logs/Sidak-tunnel.log", "--config", tunnelConfig, "run", name]
-    p.terminationHandler = { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 10) { self.runTunnel(r, port: port) } }
+    p.terminationHandler = { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 10) { if self.tunnel === p { self.runTunnel(r, port: port) } } }
     do { try p.run(); tunnel = p } catch { NSLog("remote: cloudflared: %@", error.localizedDescription) }
   }
   func applicationWillTerminate(_ n: Notification) { tunnel?.terminationHandler = nil; tunnel?.terminate() }
