@@ -21,8 +21,35 @@ n=${1:-}; note=${2:-}
 key=$ORG/$repo#$n
 entry() { jq -r --arg k "$key" ".[\$k].$1 // \"\"" $STATE; }
 
+# Reviewed PRs that moved since my review (pr.js followUp) as a JSON array, each with movedAt in ms: my latest request after the
+# review, else the last commit when the head moved past the reviewed sha (no sha: a commit dated after the review) and the review
+# was not an approval. [] when GitHub does not answer.
+updated() {
+  python3 - $STATE <<'PY'
+import datetime, json, subprocess, sys
+state = json.load(open(sys.argv[1]))
+QUERY = """query ($q: String!) { viewer { login } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
+  number title isDraft updatedAt headRefOid repository { name nameWithOwner } author { login } commits(last: 1) { nodes { commit { committedDate } } }
+  timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } } } } } }"""
+out = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", "q=is:open is:pr archived:false reviewed-by:@me sort:created-asc"],
+                     capture_output=True, text=True)
+if out.returncode: sys.exit(print("[]"))
+found = json.loads(out.stdout)["data"]
+def ms(iso): return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000
+def moved_at(pr):
+    entry = state.get(f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}', {})
+    if entry.get("state") != "reviewed": return None
+    asked = [e["createdAt"] for e in pr["timelineItems"]["nodes"] if (e.get("requestedReviewer") or {}).get("login") == found["viewer"]["login"]]
+    if asked and ms(asked[-1]) > entry["at"]: return ms(asked[-1])
+    pushed = ms(pr["commits"]["nodes"][0]["commit"]["committedDate"]) if pr["commits"]["nodes"] else 0
+    moved = pr["headRefOid"] != entry["sha"] if entry.get("sha") else pushed > entry["at"]
+    return pushed if moved and entry.get("verdict") != "approved" else None
+print(json.dumps([{**pr, "movedAt": at} for pr in found["search"]["nodes"] if (at := moved_at(pr)) is not None]))
+PY
+}
+
 board() {
-  local s=$(<$STATE)
+  local s=$(<$STATE) moved=$(updated)
   # The panel's stale cut-off (settings.json staleDays, default 30, 0 = off) keeps the menu bar count in step with its Inbox.
   local days=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("staleDays", 30)))' $SETTINGS 2>/dev/null || print 30)
   # Filtered here, not with --updated, so VIP authors (settings.json vip, logins only) still count when stale, as in the panel.
@@ -36,11 +63,15 @@ board() {
       | select($st != "running" and $st != "reviewed" and ($z[$k] | not))
       | select((.updatedAt | sub("\\.[0-9]+"; "") | fromdateiso8601 * 1000) > $cutoff or ([.author.login] | inside($vip)))
       | "  \(.repository.name)#\(.number) \(.title) (\(.author.login))\(if $st == "failed" then " [failed]" else "" end)"'
+  # Reviewed PRs that moved since my review are to review again, as in the panel's Inbox.
+  jq -r --argjson z "$snooze" '.[] | select($z[.repository.nameWithOwner + "#" + (.number | tostring)] | not)
+    | "  \(.repository.name)#\(.number) \(.title) (\(.author.login)) [updated]"' <<< $moved
   print "Running"
   jq -r --arg org "$ORG/" 'to_entries[] | select(.value.state == "running") | "  \(.key | ltrimstr($org)) [\(.value.depth // "full")]"' $STATE
   print "Reviewed"
   gh search prs --reviewed-by=@me --state=open --archived=false --json repository,number,title --limit 50 |
-    jq -r --argjson s "$s" '.[] | $s[.repository.nameWithOwner + "#" + (.number | tostring)] as $e | select($e.state == "reviewed")
+    jq -r --argjson s "$s" --argjson m "$moved" '[$m[] | .repository.nameWithOwner + "#" + (.number | tostring)] as $moved
+      | .[] | (.repository.nameWithOwner + "#" + (.number | tostring)) as $k | $s[$k] as $e | select($e.state == "reviewed" and ($moved | index($k)) == null)
       | "  \(.repository.name)#\(.number) \(.title) [\($e.depth // "full")]"'
 }
 
@@ -61,10 +92,10 @@ start() {
 
 # While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
 # model and effort: VIPs first, then the oldest request; at most 10 auto runs a day. A PR with a state.json entry is never started
-# again, unless it is a manual run that failed, or a follow-up: one I reviewed whose author pushed or re-requested me since (pr.js
-# followUp), re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
+# again, unless it is a manual run that failed, or a follow-up (updated): one I reviewed whose author pushed or re-requested me since,
+# re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
 auto() {
-  local line=$(python3 - $SETTINGS $STATE $SIDAK_DIR/config.json <<'PY'
+  local line=$(UPDATED=$(updated) python3 - $SETTINGS $STATE $SIDAK_DIR/config.json <<'PY'
 import datetime, json, os, subprocess, sys, time
 settings_path, state_path, config_path = sys.argv[1:]
 settings, config = json.load(open(settings_path)), json.load(open(config_path))
@@ -95,27 +126,8 @@ def checked_out(repo): return os.path.isdir(os.path.join(os.path.expanduser(conf
 def eligible(pr): return (pr["repository"]["nameWithOwner"].startswith(config["org"] + "/") and pr["repository"]["name"] in reviewable
                           and not pr["isDraft"] and not stale(pr) and snooze.get(key(pr), 0) <= now * 1000 and checked_out(pr["repository"]["name"]))
 todo = [pr for pr in json.loads(search.stdout) if eligible(pr) and not done(pr)]
-# Follow-ups, pr.js followUp in ms: my latest request after the review, else the last commit when the head moved past the reviewed sha
-# (no sha: a commit dated after the review) and the review was not an approval. None when the PR has not moved.
-QUERY = """query ($q: String!) { viewer { login } search(query: $q, type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  number isDraft updatedAt headRefOid repository { name nameWithOwner } author { login } commits(last: 1) { nodes { commit { committedDate } } }
-  timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 10) { nodes { ... on ReviewRequestedEvent { createdAt requestedReviewer { ... on User { login } } } } } } } } }"""
-reviewed = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", "q=is:open is:pr archived:false reviewed-by:@me sort:created-asc"],
-                          capture_output=True, text=True)
-if reviewed.returncode: sys.exit(print("auto on (gh failed)"))
-found = json.loads(reviewed.stdout)["data"]
-def ms(iso): return datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000
-def moved_at(pr):
-    entry = state.get(key(pr), {})
-    if entry.get("state") != "reviewed": return None
-    asked = [e["createdAt"] for e in pr["timelineItems"]["nodes"] if (e.get("requestedReviewer") or {}).get("login") == found["viewer"]["login"]]
-    if asked and ms(asked[-1]) > entry["at"]: return ms(asked[-1])
-    pushed = ms(pr["commits"]["nodes"][0]["commit"]["committedDate"]) if pr["commits"]["nodes"] else 0
-    moved = pr["headRefOid"] != entry["sha"] if entry.get("sha") else pushed > entry["at"]
-    return pushed if moved and entry.get("verdict") != "approved" else None
-# An hour without a push or a new request: the author is done for now.
-def due(pr): at = moved_at(pr); return at is not None and now * 1000 - at >= 3600 * 1000
-todo += [pr for pr in found["search"]["nodes"] if eligible(pr) and due(pr)]
+# Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
+todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
 todo.sort(key=lambda pr: not is_vip(pr))  # stable: oldest first within VIPs and the rest
 if not todo: sys.exit(print("auto on (nothing to review)"))
 for pr in todo[:left]:

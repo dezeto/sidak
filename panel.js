@@ -354,6 +354,8 @@ function prRow(pr) {
     });
   };
   row.dataset.claude = pr.claude ?? '';
+  // Back in the Inbox after my review: its dot says to review again.
+  if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
   // The column already says running/reviewed; the badge is an icon or the word "failed". Running it opens cmux; reviewed it lets the
   // card's link open the PR (state.json has no review id); failed it skims again, like s.
@@ -401,7 +403,7 @@ function prRow(pr) {
 
 // The popup shows one column at a time, picked by a tab, under its section label; Inbox's label says what is left.
 // Stale rows close in a fold at the bottom, outside the count.
-const SECTION_LABELS = { Inbox: 'To review', Updated: 'Updated since your review', Reviewed: 'Waiting on author' };
+const SECTION_LABELS = { Inbox: 'To review', Reviewed: 'Waiting on author' };
 function column(title, iconId, prs, group = 'inbox', stale = []) {
   const section = el('section', { className: 'column' });
   section.dataset.tab = title;
@@ -424,7 +426,7 @@ function staleFold(prs) {
   return details;
 }
 
-// Each profile keeps its own open tab: Inbox / Updated / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
+// Each profile keeps its own open tab: Inbox / Running / Reviewed, or Needs me / Waiting / Ready / Drafts.
 const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'Needs me') };
 function showTab(title, group) {
   const moved = openTab[group] !== title;
@@ -470,7 +472,7 @@ async function reviewState() {
   return res?.ok ? res.json() : {};
 }
 
-// Review pipeline: requested PRs flow Inbox -> Running -> Reviewed by state.json, and back to Updated when they move after my review;
+// Review pipeline: requested PRs flow Inbox -> Running -> Reviewed by state.json, and back to the Inbox when they move after my review;
 // Mine splits by what each PR needs next.
 // Stale PRs (settings.staleDays) fold away in Inbox and Mine, never in Running or Reviewed; a VIP is never stale and tops the Inbox.
 function board(sections, state) {
@@ -490,15 +492,13 @@ function board(sections, state) {
   }
   // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
   const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));
-  const inbox = requested
-    .filter((pr) => pr.claude !== 'running' && pr.claude !== 'reviewed')
-    .sort((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip));
-  // A reviewed PR that moved since my review (followUp) is mine again, in Updated; Reviewed keeps the rest, which wait on their author.
+  // A reviewed PR that moved since my review (followUp) is back in the Inbox; Reviewed keeps the rest, which wait on their author.
   const reviewed = all.filter((pr) => pr.claude === 'reviewed');
+  const inbox = [...requested.filter((pr) => pr.claude !== 'running' && pr.claude !== 'reviewed'), ...reviewed.filter((pr) => pr.followUp)]
+    .sort((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip));
   const wrap = el('div', { className: 'board' });
   wrap.append(
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
-    column('Updated', 'i-refresh', reviewed.filter((pr) => pr.followUp)),
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
     column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp)),
     ...mineColumns(by.Mine ?? [], stale),
