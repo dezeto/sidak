@@ -43,6 +43,9 @@ const AUTHOR_ACTIONS = {
 // Only failing checks get a glyph: passing or running ones ask nothing of me.
 const CHECKS = { FAILURE: 'Checks failed', ERROR: 'Checks errored' };
 // state.json verdict (claude-review): the state of my posted review, as [status word, its colour's data-state].
+// Reviewers on a card: who and how, in each avatar's ring and tooltip; three faces, then +n.
+const REVIEWER_LABELS = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', PENDING: 'review pending' };
+const MAX_AVATARS = 3;
 const VERDICTS = { approved: ['Approved', 'APPROVED'], changes: ['Changes requested', 'CHANGES_REQUESTED'], commented: ['Commented', 'COMMENTED'] };
 const UNITS = [['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
 const relative = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
@@ -273,6 +276,13 @@ function collapsible({ key, className, iconId, title, children }) {
   return details;
 }
 
+function avatar(reviewer) {
+  const label = `${reviewer.login}: ${REVIEWER_LABELS[reviewer.state]}`;
+  const img = el('img', { src: reviewer.avatarUrl, alt: label, title: label, width: 16, height: 16 });
+  img.dataset.state = reviewer.state;
+  return img;
+}
+
 // The cards whose TL;DR is open, kept across the re-render every sync does; ids tie each toggle to its block.
 const openTldrs = new Set();
 let tldrIds = 0;
@@ -398,6 +408,11 @@ function prRow(pr) {
   for (const button of actions.children) button.onclick = openInCmux(button.dataset.depth);
   // The label is the button's first text node; its key hint stays.
   if (pr.claude === 'reviewed') actions.lastElementChild.firstChild.data = 'Again';
+
+  const avatars = row.querySelector('.avatars');
+  avatars.append(...pr.reviewers.slice(0, MAX_AVATARS).map(avatar));
+  const hidden = pr.reviewers.length - MAX_AVATARS;
+  if (hidden > 0) avatars.append(el('span', { className: 'more', textContent: `+${hidden}` }));
   return row;
 }
 

@@ -282,7 +282,7 @@
   /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
   .pr:is(:hover, :focus-within) .actions { display: flex; }
-  :root:not([data-remote]) .pr[data-acts]:is(:hover, :focus-within) .time { display: none; }
+  :root:not([data-remote]) .pr[data-acts]:is(:hover, :focus-within) :is(.avatars, .time) { display: none; }
   /* Three buttons (my own PR: Fix / Nudge / Merge first): the pill steps aside for the title, and the capsules tighten. */
   :root:not([data-remote]) .pr[data-acts='3']:is(:hover, :focus-within) .pill { display: none; }
   .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
@@ -309,6 +309,13 @@
   .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
   .tldr[hidden] { display: none; }
   .tldr b { font-weight: 600; color: var(--lg-ink-muted); }
+  /* Reviewers before the age: overlapping faces, each ringed by its state (green approved, red changes, faded pending). */
+  .avatars { grid-column: 3; grid-row: 1 / span 2; display: flex; align-items: center; }
+  .avatars:not(:empty) { margin-right: 10px; }
+  .avatars img { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 0 0 1.5px var(--state); }
+  .avatars img + img { margin-left: -3px; }
+  .avatars img[data-state='PENDING'] { --state: transparent; opacity: 0.55; }
+  .more { margin-left: 5px; font-size: 11px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
   .claude { font-size: 10px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: var(--state); cursor: pointer; }
   .claude:hover { text-decoration: underline; }
   .claude svg { width: 13px; height: 13px; display: block; }
@@ -525,7 +532,7 @@
     <svg class="icon" aria-hidden="true"><use href="#i-pr" /></svg>
     <span class="title" translate="no"></span>
     <span class="time"></span>
-    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info" translate="no"></span></span><button class="claude" type="button"></button></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only" aria-keyshortcuts="s">Skim<kbd aria-hidden="true">s</kbd></button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings" aria-keyshortcuts="d">Deep<kbd aria-hidden="true">d</kbd></button></span>
+    <span class="meta"><span class="checks"></span><span class="text"><span class="state"></span><span class="info" translate="no"></span></span><button class="claude" type="button"></button></span><span class="avatars"></span><span class="actions"><button class="review" type="button" data-depth="quick" title="Skim: AC from the diff, blocking findings only" aria-keyshortcuts="s">Skim<kbd aria-hidden="true">s</kbd></button><button class="review" type="button" data-depth="full" title="Deep review: AC proven by tests, mutation run, all findings" aria-keyshortcuts="d">Deep<kbd aria-hidden="true">d</kbd></button></span>
   </a>
 </template>
 <script src="pr.js"></script>
