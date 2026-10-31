@@ -443,13 +443,32 @@ function staleFold(prs, label = 'Stale', className = 'stale') {
 
 // Each profile keeps its own open tab: Inbox / Running / Reviewed, or To do / Waiting / Ready.
 const openTab = { inbox: saved('tab', 'Inbox'), mine: saved('mineTab', 'To do') };
-function showTab(title, group) {
+function showTab(title, group, dir = 0) {
   const moved = openTab[group] !== title;
   openTab[group] = title;
   save(group === 'mine' ? 'mineTab' : 'tab', title);
   markActive(moved);
-  // The lists cross-fade: the one now shown fades in over the fast duration.
-  if (moved) for (const section of list.querySelectorAll('.column:is(.active, .also)')) play(section, [{ opacity: 0 }, {}], { duration: parseFloat(token('--lg-duration-fast')), easing: 'ease-out' });
+  if (moved) slideIn(dir);
+}
+// The list now shown fades in over the fast duration; after a swipe it also slides in from the side the swipe went to (dir 1 or -1).
+function slideIn(dir) {
+  for (const section of list.querySelectorAll('.column:is(.active, .also)')) {
+    play(section, [{ opacity: 0, transform: `translateX(${dir * 16}px)` }, {}], { duration: parseFloat(token('--lg-duration-fast')), easing: 'ease-out' });
+  }
+}
+// Swipes page through all six tabs as one row, Inbox / Running / Reviewed then To do / Waiting / Ready: dir 1 the next tab, -1 the
+// one before; past the end of one profile the next swipe turns to the other.
+function stepTab(dir) {
+  const strip = [...tabsBar.children];
+  const view = document.body.dataset.view;
+  const at = strip.findIndex((button) => button.dataset.group === view && button.value === openTab[view]);
+  const next = at < 0 ? null : strip[at + dir];
+  if (!next) return;
+  if (next.dataset.group === view) return showTab(next.value, view, dir);
+  openTab[next.dataset.group] = next.value;
+  save(next.dataset.group === 'mine' ? 'mineTab' : 'tab', next.value);
+  setView(next.dataset.group);
+  slideIn(dir);
 }
 // The active list is the current profile's open tab: its button pressed, its column the one the popup shows.
 // The Inbox tab also lists what is running (.also), as a second section.
@@ -803,8 +822,8 @@ setView(saved('view', 'inbox'));
 setView(location.hash.slice(1));
 booted = true;
 addEventListener('hashchange', () => setView(location.hash.slice(1)));
-// Two-finger swipe, by direction like ⌘← / ⌘→: a swipe left (deltaX > 0 with natural scrolling) lands on the Inbox (reviewer),
-// a swipe right on Mine (author). One switch per gesture, so 400 ms of quiet re-arms it.
+// Two-finger swipe, paging like ← / →: fingers left (deltaX > 0 with natural scrolling) the next tab, right the one before (stepTab).
+// One step per gesture, so 300 ms of quiet re-arms it.
 let swipe = 0, swipeTimer, swiped = false;
 addEventListener('wheel', ({ deltaX, deltaY }) => {
   // Trackpad wheel events come in small steps: sum the sideways travel over the gesture; 300 ms of quiet ends it.
@@ -814,7 +833,18 @@ addEventListener('wheel', ({ deltaX, deltaY }) => {
   swipe += deltaX;
   if (swiped || Math.abs(swipe) < 60) return;
   swiped = true;
-  setView(swipe > 0 ? 'inbox' : 'mine');
+  stepTab(swipe > 0 ? 1 : -1);
+}, { passive: true });
+// On a touch screen a sideways swipe does the same. A mostly vertical drag scrolls, and one that starts in a field is the field's.
+let touch = null;
+addEventListener('touchstart', ({ touches, target }) => {
+  touch = touches.length === 1 && !target.closest('input') ? { x: touches[0].clientX, y: touches[0].clientY } : null;
+}, { passive: true });
+addEventListener('touchend', ({ changedTouches: [end] }) => {
+  if (!touch) return;
+  const dx = end.clientX - touch.x, dy = end.clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) > 60 && Math.abs(dx) > 2 * Math.abs(dy)) stepTab(dx < 0 ? 1 : -1);
 }, { passive: true });
 // Sidak.app sizes its popover to the page: after a render or any size change the height goes through the bridge, 50 ms after the last.
 // Only there (shim.js sets data-app); Arc never sends it.
