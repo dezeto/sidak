@@ -279,7 +279,9 @@
   /* Status icon (panel.js statusMark), in the status colour: amber to review, blue running, green reviewed, red failed; on my own PRs
      by what each needs next. Running it opens cmux and failed it skims again; otherwise a click opens the PR like the card. */
   .claude { grid-row: 1 / span 2; grid-column: 1; display: grid; place-items: center; width: 16px; height: 16px; padding: 0; color: var(--status); cursor: inherit; }
+  .claude { position: relative; }
   .claude svg { width: 15px; height: 15px; }
+  .claude .vip { position: absolute; top: -4px; right: -5px; width: 10px; height: 10px; color: var(--gold); filter: drop-shadow(0 0 1px Canvas) drop-shadow(0 0 1px Canvas); }
   .claude:is([data-state='running'], [data-state='failed']) { cursor: pointer; }
   .claude:is([data-state='running'], [data-state='failed']):hover { filter: brightness(1.3); }
   .pr { --status: var(--dot-amber); }
@@ -290,7 +292,6 @@
   .pr[data-group='draft'] { --status: var(--grey); }
   .title, .meta { grid-column: 2; margin: 0 10px 0 10px; }
   .title { grid-row: 1; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .icon.vip { width: 11px; height: 11px; margin-right: 5px; vertical-align: -1px; color: var(--gold); }
   .pr[data-state='DRAFT'] { opacity: 0.7; }
   /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }

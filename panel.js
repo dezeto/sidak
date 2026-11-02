@@ -32,7 +32,7 @@ search.onkeydown = (event) => {
 const rowTemplate = document.getElementById('pr').content.firstElementChild;
 
 // No word for REVIEW_REQUIRED: the section label (To review) and the amber dot say it.
-const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes requested', REVIEW_REQUIRED: '', DRAFT: 'Draft' };
+const REVIEW_LABELS = { APPROVED: 'Approved', CHANGES_REQUESTED: 'Changes', REVIEW_REQUIRED: '', DRAFT: 'Draft' };
 // The one button on my own PR, by authorState().action: [label, tooltip, key]. The opener runs ccfix / ccnudge / ccmerge / ccready.
 const AUTHOR_ACTIONS = {
   fix: ['Fix', 'Fix in cmux: address review threads, failing checks and conflicts, push, re-request review', 'f'],
@@ -46,7 +46,7 @@ const CHECKS = { FAILURE: 'Checks failed', ERROR: 'Checks errored' };
 // Reviewers on a card: who and how, in each avatar's ring and tooltip; three faces, then +n.
 const REVIEWER_LABELS = { APPROVED: 'approved', CHANGES_REQUESTED: 'requested changes', PENDING: 'review pending' };
 const MAX_AVATARS = 3;
-const VERDICTS = { approved: ['Approved', 'APPROVED'], changes: ['Changes requested', 'CHANGES_REQUESTED'], commented: ['Commented', 'COMMENTED'] };
+const VERDICTS = { approved: ['Approved', 'APPROVED'], changes: ['Changes', 'CHANGES_REQUESTED'], commented: ['Commented', 'COMMENTED'] };
 const UNITS = [['month', 2592000], ['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60]];
 const relative = new Intl.RelativeTimeFormat(undefined, { style: 'narrow' });
 
@@ -320,7 +320,6 @@ function prRow(pr) {
   const info = row.querySelector('.info');
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author));
-  if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
   // The status word: Auto review on a review auto started that is still running, or why a PR is back since my review (both amber,
   // like its dot), else my verdict on one I reviewed, else its review state.
   // How and by whom it was reviewed goes in the tooltip.
@@ -394,10 +393,12 @@ function prRow(pr) {
   const claude = row.querySelector('.claude');
   // The status icon at the card's left (statusMark): running it opens cmux, failed it skims again, like s; any other click is the card's.
   const [iconId, mark] = statusMark(pr);
-  claude.replaceChildren(icon(iconId));
+  // A VIP author's card wears a gold star on the icon's corner.
+  const vip = isVip(pr, settings.vip);
+  claude.replaceChildren(icon(iconId), ...(vip ? [icon('i-star', 'vip')] : []));
   claude.dataset.state = pr.claude ?? '';
-  claude.title = mark;
-  claude.ariaLabel = mark;
+  claude.title = vip ? `${mark} · VIP` : mark;
+  claude.ariaLabel = vip ? `${mark}, VIP author` : mark;
   const skim = (event) => {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
