@@ -132,28 +132,22 @@
   :root[data-remote] #settings-fold { position: fixed; inset: auto max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); z-index: 6; }
   :root[data-remote] #settings { border-radius: 28px; background: var(--sheet-bg); box-shadow: var(--lg-highlight), var(--lg-shadow-high); }
   :root[data-remote][data-settings] #foot > :not(#settings-fold) { visibility: hidden; }
-  /* Phone Liquid Glass (iOS 26): glass needs something behind it, so the phone's page gets a soft light of the accent and two cool hues;
-     the tab bar, sheets and their buttons are clear glass over it: tinted, heavily blurred and saturated, with a lit rim. */
+  /* Phone Liquid Glass (iOS 26) on a plain background (black in dark mode): the tab bar, sheets and their buttons are clear glass
+     over the list: tinted, heavily blurred and saturated, with a lit rim. */
   :root[data-remote] {
     --glass: rgba(255, 255, 255, 0.6); --glass-strong: rgba(250, 250, 252, 0.74); --glass-button: rgba(255, 255, 255, 0.55);
     --glass-rim: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 0 0 0.5px rgba(255, 255, 255, 0.6), inset 0 -1px 1px rgba(0, 0, 0, 0.04);
     --glass-blur: blur(28px) saturate(190%); --ambient: #eef0f5;
-    --glow-1: rgba(31, 154, 72, 0.22); --glow-2: rgba(70, 120, 240, 0.2); --glow-3: rgba(170, 90, 230, 0.16);
     background: var(--ambient);
   }
   @media (prefers-color-scheme: dark) {
     :root[data-remote] {
       --glass: rgba(36, 36, 44, 0.56); --glass-strong: rgba(30, 30, 36, 0.72); --glass-button: rgba(255, 255, 255, 0.1);
       --glass-rim: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 0.5px rgba(255, 255, 255, 0.12), inset 0 -1px 1px rgba(0, 0, 0, 0.3);
-      --ambient: #08080b; --glow-1: rgba(31, 154, 72, 0.2); --glow-2: rgba(60, 100, 230, 0.2); --glow-3: rgba(150, 70, 220, 0.16);
+      --ambient: #000;
     }
   }
   :root[data-remote] body { background: none; }
-  :root[data-remote] body::before {
-    content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    background: radial-gradient(60% 40% at 12% 18%, var(--glow-1), transparent 70%), radial-gradient(55% 45% at 92% 52%, var(--glow-2), transparent 70%),
-      radial-gradient(60% 40% at 30% 96%, var(--glow-3), transparent 70%);
-  }
   :root[data-remote] header, :root[data-remote][data-scrolled] header {
     border-color: transparent; background: var(--glass); box-shadow: var(--glass-rim), var(--lg-shadow-elevated);
     -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
@@ -171,7 +165,6 @@
   }
   @media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
     :root[data-remote] { --glass: Canvas; --glass-strong: Canvas; --glass-blur: none; }
-    :root[data-remote] body::before { display: none; }
   }
   :root[data-remote][data-settings] header { filter: blur(8px); opacity: 0.5; pointer-events: none; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
