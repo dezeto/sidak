@@ -31,6 +31,30 @@
       seg.after(ctl);
       sync();
     }
+    // iOS Settings: a title with Done, then the rows in labelled groups on rounded cards. The rows move, not copies, so panel.js keeps
+    // its handles on them.
+    const settings = document.getElementById('settings');
+    const rows = [...settings.querySelectorAll(':scope > .set')];
+    const row = (sel) => rows.find((r) => r.matches(sel) || r.querySelector(sel));
+    const head = document.createElement('div');
+    head.className = 'ios-head';
+    const done = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Done', onclick: () => document.querySelector('#foot .run')?.click() });
+    head.append(document.createElement('span'), Object.assign(document.createElement('h2'), { textContent: 'Settings' }), done);
+    settings.append(head);
+    for (const [label, sels] of [
+      ['New reviews', ['[data-key="model"]', '[data-key="effort"]', '[data-setting="profile"]']],
+      ['Auto', ['[data-setting="auto"]', '#auto-cap', '[data-setting="quiet"]']],
+      ['Board', ['[data-setting="pollMinutes"]', '[data-setting="staleDays"]', '#phone-set']],
+      ['VIP authors', ['.vip']],
+    ]) {
+      const group = document.createElement('div');
+      group.className = 'ios-group';
+      const cells = document.createElement('div');
+      cells.className = 'ios-cells';
+      cells.append(...sels.map(row).filter(Boolean));
+      group.append(Object.assign(document.createElement('p'), { className: 'ios-label', textContent: label }), cells);
+      settings.append(group);
+    }
   });
   const changed = new Set();
   // The Mac's lists, refetched every minute and when the phone comes back to the tab; the page's own keys (view, tab, snooze picks)

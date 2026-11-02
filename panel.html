@@ -137,7 +137,13 @@
     font-size: 13px; font-weight: 500; opacity: 0; transform: translate(-50%, 8px); pointer-events: none; transition: opacity var(--lg-duration-fast), transform var(--lg-duration-fast);
   }
   #toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
-  :root[data-remote] #toast { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
+  :root[data-remote] #toast {
+    top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;
+    background: var(--cell); box-shadow: 0 0 0 0.5px var(--group-line), 0 10px 30px rgba(0, 0, 0, 0.45); font-size: 15px; font-weight: 600; line-height: 20px;
+    text-align: center; transform: translate(-50%, -12px);
+  }
+  :root[data-remote] #toast[data-on] { transform: translate(-50%, 0); }
   :root[data-remote] .tldr { grid-row: 4; }
   /* Phone cards are compact rows like Mail's: the title on up to two lines, no buttons; a tap opens the card's sheet. */
   :root[data-remote] .pr .actions, :root[data-remote] .more-menu { display: none; }
@@ -186,6 +192,26 @@
   :root[data-remote] .seg button { height: 32px; padding: 0 10px; border-radius: 16px; font-size: 13px; }
   :root[data-remote] .num { width: 64px; height: 36px; border-radius: 18px; }
   :root[data-remote][data-settings] #foot > :not(#settings-fold) { visibility: hidden; }
+  /* Phone settings, like iOS Settings (groups built by app/remote.js): a full-height sheet, solid, a title with Done, labelled groups
+     of rows on rounded cells. */
+  :root[data-remote] { --set-bg: #f2f2f7; --cell: #fff; }
+  @media (prefers-color-scheme: dark) { :root[data-remote] { --set-bg: #1c1c1e; --cell: #2c2c2e; } }
+  :root[data-remote] #settings-fold { inset: calc(env(safe-area-inset-top, 0px) + 10px) 0 0; }
+  :root[data-remote] #settings-fold #settings {
+    display: block; height: 100%; max-height: none; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
+    padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    border: 0; border-radius: 38px 38px 0 0; background: var(--set-bg); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.35); -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .ios-head { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; height: 44px; }
+  .ios-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+  .ios-head button { justify-self: end; height: 36px; padding: 0 16px; border-radius: 18px; background: rgba(127, 127, 127, 0.18); color: var(--lg-ink); font-size: 15px; font-weight: 600; }
+  .ios-group { margin-top: 22px; }
+  .ios-label { margin: 0 0 7px; padding: 0 16px; font-size: 13px; text-transform: uppercase; color: var(--lg-ink-muted); }
+  .ios-cells { padding: 0 16px; border-radius: 22px; background: var(--cell); }
+  .ios-cells .set.vip { padding-block: 12px; }
+  .ios-cells .set.vip > .l { display: none; }
+  :root[data-remote] #settings .ios-cells .seg { background: rgba(118, 118, 128, 0.24); box-shadow: none; }
+  :root[data-remote] .ios-cells .num { width: 72px; background: rgba(118, 118, 128, 0.24); }
   /* Phone Liquid Glass (iOS 26) on a plain background (black in dark mode): the tab bar, sheets and their buttons are clear glass
      over the list: tinted, heavily blurred and saturated, with a lit rim. */
   :root[data-remote] {
