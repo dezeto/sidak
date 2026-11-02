@@ -168,6 +168,7 @@ const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]')
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
+const vipPeople = document.getElementById('vip-people');
 // Auto review: Sidak.app's timer runs pr-board auto, which reads auto.on and the picks; the footer says Auto while on.
 const autoSeg = document.querySelector('#settings [data-setting="auto"]');
 // Claude profile: the opener reads it from settings.json and starts claude-review with that config.profiles entry's CLAUDE_CONFIG_DIR.
@@ -244,6 +245,8 @@ vipBox.onkeydown = (event) => {
   addVip();
 };
 vipBox.onblur = addVip;
+// A pick from the suggestions adds at once; typing still waits for Enter.
+vipBox.oninput = ({ inputType }) => (!inputType || inputType === 'insertReplacementText') && addVip();
 showSettings();
 
 function icon(id, className = 'icon') {
@@ -532,6 +535,11 @@ function board(sections, state) {
     pr.tldr = entry?.tldr ?? null;
     pr.followUp = followUp(pr, entry);
   }
+  // The VIP field suggests everyone on these PRs, authors and reviewers, who is not a VIP yet.
+  const people = new Set(all.flatMap((pr) => [pr.author, ...pr.reviewers.map((r) => r.login)]).filter(Boolean));
+  const vips = new Set(settings.vip.map((v) => v.toLowerCase()));
+  vipPeople.replaceChildren(...[...people].filter((login) => !vips.has(login.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })).map((login) => el('option', { value: login })));
   // A snoozed PR (h, a day) folds away like a stale one, VIP or not.
   const stale = (pr) => snoozedUntil(pr) > now || (isStale(pr, settings.staleDays, now) && !isVip(pr, settings.vip));
   // A reviewed PR that moved since my review (followUp) is back in the Inbox; Reviewed keeps the rest, which wait on their author.
