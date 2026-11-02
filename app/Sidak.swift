@@ -463,7 +463,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   // only with a valid Cloudflare Access login. GET serves the page with app/remote.js, its files and the board's lists; POST /act runs
   // an action like a tap on the board. Nothing else in the repo is served: token.txt and handoffs/ never leave the Mac.
   var listener: NWListener?
-  let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "settings.json", "config.json", "icons/180.png"]
+  let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "settings.json", "config.json", "icons/180.png", "icons/32.png"]
   // Every action the board sends, minus Zed (it opens on the Mac's screen); sidaksync: is the phone's refresh button.
   let remoteActions = ["ccreview:", "ccfix:", "ccmerge:", "ccnudge:", "ccready:", "ccset:", "sidaksync:"]
   func serve(port: UInt16) {
@@ -505,7 +505,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         "<meta charset=\"utf-8\" />", "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\" />",
         "<meta name=\"apple-mobile-web-app-capable\" content=\"yes\" />", "<meta name=\"mobile-web-app-capable\" content=\"yes\" />",
         "<meta name=\"apple-mobile-web-app-status-bar-style\" content=\"black-translucent\" />", "<meta name=\"apple-mobile-web-app-title\" content=\"Sidak\" />",
-        "<link rel=\"apple-touch-icon\" href=\"icons/180.png\" />", "<script src=\"app/remote.js\"></script>",
+        "<link rel=\"apple-touch-icon\" href=\"icons/180.png\" />", "<link rel=\"icon\" type=\"image/png\" sizes=\"32x32\" href=\"icons/32.png\" />", "<script src=\"app/remote.js\"></script>",
       ].joined(separator: "\n")
       send(c, 200, "text/html", Data(html.replacingOccurrences(of: "<meta charset=\"utf-8\" />", with: head).utf8))
     case ("GET", "/storage.json"):
