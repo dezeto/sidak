@@ -61,6 +61,8 @@
   :root[data-remote] .tldr { grid-row: 4; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }
+  /* A long press held long enough (app/remote.js): lift to open the card menu. */
+  :root[data-remote] .pr[data-held] { background: var(--row-hover); transform: scale(0.985); transition: transform var(--lg-duration-fast), background-color var(--lg-duration-fast); }
   ::selection { background: color-mix(in srgb, var(--lg-accent) 28%, transparent); }
   input { caret-color: var(--lg-accent); }
   button { border: 0; background: none; color: inherit; font: inherit; cursor: pointer; touch-action: manipulation; }

@@ -55,6 +55,52 @@ Two front ends share one page:
 
 `config.json`, `state.json`, `settings.json`, `handoffs/` and `token.txt` are personal or live data and stay out of git.
 
+## Reading the board
+
+Each card's state is the icon on its left; hover it for the full text (who is awaited, what the review cost).
+
+<p align="center"><img src="docs/cards-dark.png" width="440" alt="Sample cards: a VIP PR with failing checks, an auto review running, a PR back with new commits, a reviewed PR with its TL;DR open, an approved one, my own PR with conflicts, one awaiting reviewers, and a self-check's fix list"></p>
+
+**Review cards** (Inbox, Running, Reviewed)
+
+| | |
+|---|---|
+| <img src="docs/icons/eye-amber.svg" width="16" alt=""> | Waiting for your review |
+| <img src="docs/icons/play-blue.svg" width="16" alt=""> | Review running (`Auto review` in amber when Auto started it); a click opens its cmux tab |
+| <img src="docs/icons/xcircle-red.svg" width="16" alt=""> | Review failed: the tab closed before a review posted; a click skims again |
+| <img src="docs/icons/refresh-amber.svg" width="16" alt=""> | Back since your review: new commits, or you were re-requested; Auto re-reviews it after an hour of quiet |
+| <img src="docs/icons/done-green.svg" width="16" alt=""> | Reviewed; the word under the title is your verdict (Approved, Changes, Commented) and opens the TL;DR |
+
+**Your own PRs** (To do, Waiting, Ready)
+
+| | |
+|---|---|
+| <img src="docs/icons/alert-red.svg" width="16" alt=""> | Conflicts with the base branch |
+| <img src="docs/icons/xcircle-red.svg" width="16" alt=""> | Checks failing |
+| <img src="docs/icons/edit-red.svg" width="16" alt=""> | Changes asked |
+| <img src="docs/icons/comment-red.svg" width="16" alt=""> | Open review threads |
+| <img src="docs/icons/clock-blue.svg" width="16" alt=""> | Approved, checks still running |
+| <img src="docs/icons/hourglass-blue.svg" width="16" alt=""> | Awaiting reviewers (Nudge re-requests them) |
+| <img src="docs/icons/person-add-blue.svg" width="16" alt=""> | No reviewers yet: add some |
+| <img src="docs/icons/done-green.svg" width="16" alt=""> | Ready to merge |
+| <img src="docs/icons/pr-grey.svg" width="16" alt=""> | Draft |
+
+**Badges on the icon**
+
+| | |
+|---|---|
+| <img src="docs/icons/star-gold.svg" width="16" alt=""> | Top corner: a VIP author |
+| <img src="docs/icons/dot-red.svg" width="16" alt=""> | Bottom corner: the PR's checks are failing |
+
+**Footer**: the capsule is what a click runs with (profile · model · effort, a tap opens the settings), then these while on:
+
+| | |
+|---|---|
+| <img src="docs/icons/auto-grey.svg" width="16" alt=""> | Auto review is on (`Ⓐ 3/10` when Auto per day sets a limit) |
+| <img src="docs/icons/phone-grey.svg" width="16" alt=""> | Phone access is on |
+
+On the right: today's review tokens (hover for cache reads) and the last sync. `?` on the board has the same legend and every key.
+
 ## Setup
 
 Requirements: macOS, cmux, Claude Code, `gh` (logged in), `jq` and `swiftc` (Xcode command-line tools). Zed is optional
@@ -83,8 +129,8 @@ extension and put its id in `config.json`, and set the cmux socket password.
 
 ## Phone
 
-The board works from a phone through a Cloudflare Tunnel, actions included: a tap does what a click does, and reviews still open in
-cmux on the Mac. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
+The board works from a phone through a Cloudflare Tunnel, actions included: a tap does what a click does, a long press (the card
+lights up; lift to open) brings up the right-click menu, a sideways swipe changes tab, and reviews still open in cmux on the Mac. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
 valid Cloudflare Access login.
 
 1. In Cloudflare Zero Trust, add a self-hosted Access application for your hostname with an Allow policy for your email, and add

@@ -47,17 +47,26 @@
   };
   // A long press opens the card menu, as a right-click does at the Mac. It opens when the finger lifts: a menu already open then would
   // be closed at once by that lift (a touch stays on the card it started on, outside the menu). The tap that ends it doesn't open the PR.
-  let timer, held = null;
+  // A finger is never still: up to 10 px of drift keeps the press; at half a second the card lights up (data-held) to say lift now.
+  let timer, start = null, held = null;
+  const drop = () => { clearTimeout(timer); start?.card.removeAttribute('data-held'); start = null; };
   addEventListener('touchstart', (e) => {
     const card = e.target.closest('.pr');
     held = null;
-    if (!card) return;
+    drop();
+    if (!card || e.touches.length > 1) return;
     const { clientX, clientY } = e.touches[0];
-    timer = setTimeout(() => { held = { card, clientX, clientY }; }, 500);
+    start = { card, clientX, clientY };
+    timer = setTimeout(() => { held = start; card.setAttribute('data-held', ''); }, 500);
   }, { passive: true });
-  for (const type of ['touchmove', 'touchcancel']) addEventListener(type, () => clearTimeout(timer), { passive: true });
+  addEventListener('touchmove', (e) => {
+    const t = e.touches[0];
+    if (start && !held && Math.hypot(t.clientX - start.clientX, t.clientY - start.clientY) > 10) drop();
+  }, { passive: true });
+  addEventListener('touchcancel', () => { held = null; drop(); }, { passive: true });
   addEventListener('touchend', () => {
-    clearTimeout(timer);
+    held?.card.removeAttribute('data-held');
+    drop();
     if (!held) return;
     const { card, clientX, clientY } = held;
     setTimeout(() => card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX, clientY })));
