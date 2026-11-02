@@ -187,7 +187,7 @@ start() {
 }
 
 # While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
-# model and effort: VIPs first, then the oldest request; at most settings.json autoCap auto runs a day (0, the default: no limit). A PR with a state.json entry is never started
+# model and effort: my own ready PRs first (a self-check), then VIPs, then the oldest request; at most settings.json autoCap auto runs a day (0, the default: no limit). A PR with a state.json entry is never started
 # again, unless it is a manual run that failed, or a follow-up (updated): one I reviewed whose author pushed or re-requested me since,
 # re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
 auto() {
@@ -223,9 +223,24 @@ def checked_out(repo): return os.path.isdir(os.path.join(os.path.expanduser(conf
 def eligible(pr): return (pr["repository"]["nameWithOwner"].startswith(config["org"] + "/") and pr["repository"]["name"] in reviewable
                           and not pr["isDraft"] and not stale(pr) and snooze.get(key(pr), 0) <= now * 1000 and checked_out(pr["repository"]["name"]))
 todo = [pr for pr in json.loads(search.stdout) if eligible(pr) and not done(pr)]
+# My own PRs once they are ready (out of draft): a self-check each (claude-review writes a fix list, posts nothing), ahead of everyone
+# else's, so my own work is unblocked first. Once per PR, like the others: a state.json entry means it ran.
+# Only PRs that became ready (opened ready, or out of draft) after this first ran, kept in selfcheck-since: the ones already open then
+# are left alone. An approved one has nothing left to fix, so it is skipped too.
+since_path = os.path.join(os.path.dirname(state_path), "selfcheck-since")
+if not os.path.exists(since_path): open(since_path, "w").write(str(int(now)))
+since = int(open(since_path).read().strip() or now)
+OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:created-asc", type: ISSUE, first: 50) { nodes { ... on PullRequest {
+  number isDraft createdAt updatedAt reviewDecision repository { name nameWithOwner } author { login }
+  timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
+def ready_at(pr): return datetime.datetime.fromisoformat(((pr["timelineItems"]["nodes"] or [pr])[-1]["createdAt"]).replace("Z", "+00:00")).timestamp()
+own = subprocess.run(["gh", "api", "graphql", "-f", f"query={OWN}"], capture_output=True, text=True)
+mine = [pr for pr in json.loads(own.stdout)["data"]["search"]["nodes"]
+        if pr.get("reviewDecision") != "APPROVED" and ready_at(pr) >= since and eligible(pr) and not done(pr)] if own.returncode == 0 else []
+todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
-todo.sort(key=lambda pr: not is_vip(pr))  # stable: oldest first within VIPs and the rest
+todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
 if not todo: sys.exit(print("auto on (nothing to review)"))
 for pr in todo[:left]:
     repo, n = pr["repository"]["name"], pr["number"]
