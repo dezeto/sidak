@@ -766,6 +766,18 @@ refresh.onclick = () => {
   refresh.classList.add('spinning');
   chrome.storage.local.set({ syncRequest: Date.now() });
 };
+// Help (?) has pages: Keys, Icons, Menu bar; its buttons or ← / → pick one.
+const helpPages = document.getElementById('help-pages');
+function showHelp(page) {
+  for (const button of helpPages.children) button.ariaPressed = button.value === page;
+  for (const section of document.querySelectorAll('#help [data-page]')) section.hidden = section.dataset.page !== page;
+}
+function stepHelp(dir) {
+  const pages = [...helpPages.children];
+  const at = pages.findIndex((button) => button.ariaPressed === 'true');
+  showHelp(pages[(at + dir + pages.length) % pages.length].value);
+}
+helpPages.onclick = ({ target }) => target.value && showHelp(target.value);
 // Keys: 1–9 switch spaces when there are any, else the current profile's tabs; Tab or ⌘← / ⌘→ switch Inbox / Mine; j/k move between cards,
 // d deep-reviews the focused card, s skims it; on my own card f fixes, n nudges, m merges, r marks it ready; o opens its cmux workspace,
 // Enter opens the PR (native link), x shows the stale fold, h snoozes the card for a day (again: unsnooze), R (shift) syncs, p pins the board (Sidak.app).
@@ -788,7 +800,10 @@ document.addEventListener('keydown', (event) => {
     event.preventDefault();
     return search.focus();
   }
-  if (help.open) return;
+  if (help.open) {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') stepHelp(event.key === 'ArrowRight' ? 1 : -1);
+    return;
+  }
   if (/^[1-9]$/.test(event.key)) {
     const tabs = [...tabsBar.children].filter((button) => button.dataset.group === document.body.dataset.view);
     (nav.children.length ? [...nav.children] : tabs)[event.key - 1]?.click();
@@ -929,7 +944,8 @@ new ResizeObserver(() => {
 }).observe(document.body);
 render();
 // Skip our own sync request, so the spinner keeps going until the sync result lands.
-chrome.storage.onChanged.addListener((changes) => !changes.syncRequest && rerender());
+// A sync request (the refresh button, or Sidak.app opening the panel) spins the button until the sync's render.
+chrome.storage.onChanged.addListener((changes) => (changes.syncRequest ? refresh.classList.add('spinning') : rerender()));
 for (const event of ['onCreated', 'onRemoved', 'onChanged', 'onMoved']) chrome.bookmarks[event].addListener(rerender);
 
 // Dev hook: opening panel.html#reload reloads the unpacked extension (manifest changes need it).
