@@ -574,8 +574,8 @@ function board(sections, state) {
   wrap.append(
     ...nextStep(inbox.filter((pr) => !stale(pr)), (by.Mine ?? []).filter((pr) => !stale(pr))),
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
-    column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
-    // My own PRs stay in Mine, a self-check or not.
+    // My own PRs stay in Mine, a self-check running or done: their card there shows it.
+    column('Running', 'i-play', all.filter((pr) => pr.claude === 'running' && pr.author)),
     column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp && pr.author)),
     ...mine,
   );
