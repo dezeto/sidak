@@ -158,11 +158,14 @@ function saveSettings(change) {
 // Snooze (h): settings.snooze maps "owner/repo#n" to the time the PR comes back, a day from the press; h again brings it back now.
 // Expired entries drop at the next write, so the file stays small.
 const snoozedUntil = (pr) => settings.snooze?.[`${repoOf(pr)}#${pr.number}`] ?? 0;
-function toggleSnooze(key) {
+// Ignore (right-click) snoozes for good: the last time a Date holds, so pr-board's count and auto skip it like any snooze, and
+// Stop Ignoring (or h) brings it back.
+const IGNORED = 8.64e15;
+function toggleSnooze(key, until = Date.now() + 86400000) {
   if (!key) return;
   const now = Date.now();
-  const snooze = Object.fromEntries(Object.entries(settings.snooze ?? {}).filter(([k, until]) => k !== key && until > now));
-  if (!(settings.snooze?.[key] > now)) snooze[key] = now + 86400000;
+  const snooze = Object.fromEntries(Object.entries(settings.snooze ?? {}).filter(([k, at]) => k !== key && at > now));
+  if (!(settings.snooze?.[key] > now)) snooze[key] = until;
   saveSettings({ snooze });
 }
 // Refresh every, Hide after (the stale cut-off) and the VIP list sit in the settings card under model and effort.
@@ -395,7 +398,8 @@ function prRow(pr) {
   }
   row.oncontextmenu = (event) => openMenu(event, pr);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
-  if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
+  if (snoozedUntil(pr) >= IGNORED) info.append(...words('ignored'));
+  else if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
 
   // bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
@@ -764,6 +768,7 @@ function openMenu(event, pr) {
   menu.querySelector('[data-do="files"]').href = `${pr.url}/files`;
   menu.querySelector('[data-do="checks"]').href = `${pr.url}/checks`;
   menu.querySelector('[data-do="branch"]').disabled = !pr.branch;
+  menu.querySelector('[data-do="ignore"]').textContent = snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore';
   menu.showPopover();
   // Under the pointer, clear of the rounded corner (outside it for hit tests): on macOS the menu opens on mousedown,
   // and a mouseup outside it would light-dismiss it at once.
@@ -777,6 +782,8 @@ menu.onclick = ({ target }) => {
   if (!action) return;
   menu.hidePopover();
   if (action === 'branch' || action === 'link') copyText(action === 'branch' ? menuPr.branch : menuPr.url);
+  // Ignoring an ignored PR, or one snoozed for the day, brings it back (toggleSnooze).
+  if (action === 'ignore') toggleSnooze(`${repoOf(menuPr)}#${menuPr.number}`, IGNORED);
   // The opener runs Zed on the PR's review worktree, else on the checkout.
   if (action !== 'zed') return;
   chrome.runtime.sendNativeMessage('com.sidak.host', { url: `ccopen://${repoOf(menuPr)}/${menuPr.number}` }, (reply) => {

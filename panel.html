@@ -110,6 +110,9 @@
     -webkit-backdrop-filter: blur(var(--lg-blur-xl)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-xl)) saturate(var(--lg-saturate));
   }
   #menu { inset: auto; min-width: 160px; margin: 0; padding: 5px; border-radius: 14px; }
+  #menu hr { height: 1px; margin: 4px 10px; border: 0; background: var(--lg-border-subtle); }
+  /* A right-click opens the menu; it must not select the card's words first. */
+  .pr { -webkit-user-select: none; user-select: none; }
   #menu [data-do] { display: block; box-sizing: border-box; width: 100%; min-height: 28px; padding: 6px 10px; border-radius: 9px; color: inherit; font-size: 12px; text-align: start; text-decoration: none; }
   /* The space's accent, a shade deeper so white keeps 4.5:1 on every accent. */
   #menu [data-do]:hover { background: color-mix(in srgb, var(--accent) 70%, #000); color: #fff; }
@@ -547,6 +550,8 @@
   <a data-do="files" target="_blank">Files Changed</a>
   <a data-do="checks" target="_blank">Checks</a>
   <button type="button" data-do="link">Copy Link</button>
+  <hr />
+  <button type="button" data-do="ignore">Ignore</button>
 </div>
 <dialog id="help" aria-label="Help">
   <div class="seg" id="help-pages" role="group" aria-label="Help page">
@@ -562,7 +567,7 @@
     <tr><td><kbd>/</kbd></td><td>Search every list; Esc clears it, again closes it</td></tr>
     <tr><td><kbd>?</kbd></td><td>This help, <kbd>←</kbd> <kbd>→</kbd> its pages, Esc closes; Esc also folds the settings away</td></tr>
   </table>
-  <p>Right-click a card for Zed, its branch, files, checks or link. Settings (a tap on the footer's capsule): the Claude profile picks the CLAUDE_CONFIG_DIR from config.json that reviews run with, auto ones too.</p>
+  <p>Right-click a card for Zed, its branch, files, checks or link, or to Ignore it: it folds under Stale for good, out of the count and auto review, until Stop Ignoring there. Settings (a tap on the footer's capsule): the Claude profile picks the CLAUDE_CONFIG_DIR from config.json that reviews run with, auto ones too.</p>
   </section>
   <section data-page="cards" hidden>
   <table>
