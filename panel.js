@@ -403,8 +403,10 @@ function prRow(pr) {
     // The native messaging host (bin/) runs the opener directly; Arc's external-URL launch was unreliable.
     chrome.runtime.sendNativeMessage('com.sidak.host', { url }, (reply) => {
       const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
-      if (error) alert(`Could not ${{ merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth] ?? 'start it'}:\n${error}\nIs cmux running? Then try again.`);
-      else if (depth === 'nudge' || depth === 'ready') refresh.click();
+      // Merge, Nudge and Mark ready are gh calls: only a run in cmux needs cmux.
+      const gh = { merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth];
+      if (error) alert(`Could not ${gh ?? 'start it'}:\n${error}${gh ? '' : '\nIs cmux running? Then try again.'}`);
+      else if (gh) refresh.click();
     });
   };
   row.dataset.claude = pr.claude ?? '';

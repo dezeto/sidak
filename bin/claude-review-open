@@ -21,7 +21,10 @@ if [[ $parts[1] == <-> ]]; then repo=$(cfg '.reviewable[0]'); n=$parts[1]; model
 else repo=$parts[2]; n=$parts[3]; model=$parts[4]; effort=$parts[5]; depth=$parts[6]; fi
 cmux=/Applications/cmux.app/Contents/Resources/bin/cmux
 if [[ $scheme == ccmerge ]]; then
-  exec gh pr merge "$n" -R "$org/$repo" --squash --delete-branch
+  out=$(gh pr merge "$n" -R "$org/$repo" --squash --delete-branch 2>&1) && exit 0
+  # A PR in a stack merges only through the asynchronous endpoint: GitHub accepts it (pending) and merges in the background.
+  [[ $out == *merge-async* ]] || { print -r -- "$out" >&2; exit 1; }
+  exec gh api -X PUT "repos/$org/$repo/pulls/$n/merge-async" -f merge_method=squash --jq '"merge \(.status)"'
 fi
 if [[ $scheme == ccnudge ]]; then exec gh pr edit "$n" -R "$org/$repo" --add-reviewer "$(gh pr view "$n" -R "$org/$repo" --json reviewRequests --jq '[.reviewRequests[] | .login // (.slug | select(.) | "'$org'/" + .)] | join(",")')"; fi
 if [[ $scheme == ccready ]]; then exec gh pr ready "$n" -R "$org/$repo"; fi
