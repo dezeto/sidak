@@ -8,6 +8,19 @@ const ACCENTS = ['#5b8def', '#9b6bf2', '#2fb37a', '#f08c38', '#e5609a', '#3bb3c9
 
 const nav = document.getElementById('spaces');
 const list = document.getElementById('list');
+// Hover in script (panel.html data-hot): the card under the pointer, cleared when the pointer leaves the list.
+let hot = null;
+list.addEventListener('mouseover', ({ target }) => {
+  const row = target.closest('.pr');
+  if (row === hot) return;
+  hot?.removeAttribute('data-hot');
+  hot = row;
+  hot?.setAttribute('data-hot', '');
+});
+list.addEventListener('mouseleave', () => {
+  hot?.removeAttribute('data-hot');
+  hot = null;
+});
 const status = document.getElementById('status');
 const refresh = document.getElementById('refresh');
 const tabsBar = document.getElementById('tabs');

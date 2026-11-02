@@ -299,7 +299,9 @@
     box-sizing: border-box; min-height: 52px; padding: 8px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
     transition: background-color var(--lg-duration-fast);
   }
-  .pr:is(:hover, :focus-within) { background: var(--row-hover); }
+  /* The card under the pointer is data-hot (panel.js), not :hover: WebKit misses some :hover restyles under rows in folds, which left the
+     avatars over Skim. One attribute shows the buttons and hides the avatars together. */
+  .pr:is([data-hot], :focus-within) { background: var(--row-hover); }
   .pr:focus-visible { outline-offset: -2px; }
   .pr > .icon { display: none; }
   /* Status icon (panel.js statusMark), in the status colour: amber to review, blue running, green reviewed, red failed; on my own PRs
@@ -323,8 +325,8 @@
   .pr[data-state='DRAFT'] { opacity: 0.7; }
   /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
-  .pr:is(:hover, :focus-within) .actions { display: flex; }
-  :root:not([data-remote]) .pr[data-acts]:is(:hover, :focus-within) :is(.avatars, .time) { display: none; }
+  .pr:is([data-hot], :focus-within) .actions { display: flex; }
+  :root:not([data-remote]) .pr[data-acts]:is([data-hot], :focus-within) :is(.avatars, .time) { display: none; }
   /* Three buttons (my own PR: Fix / Nudge / Merge first): the capsules tighten. */
   .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
   .time { grid-column: 4; grid-row: 1 / span 2; font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -414,9 +416,9 @@
     #tabs[data-glide='move']::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring); }
     @media (prefers-contrast: more) { #tabs::before { box-shadow: inset 0 0 0 1px CanvasText; } }
     /* Skim / Deep (and Fix, Nudge, Merge) fade and grow in from 0.92 on hover or focus, 30 ms apart. */
-    .pr:is(:hover, :focus-within) .actions > .review { animation: cap-in var(--lg-duration-normal) var(--lg-easing-spring) backwards; }
-    .pr:is(:hover, :focus-within) .actions > .review:nth-child(2) { animation-delay: 30ms; }
-    .pr:is(:hover, :focus-within) .actions > .review:nth-child(3) { animation-delay: 60ms; }
+    .pr:is([data-hot], :focus-within) .actions > .review { animation: cap-in var(--lg-duration-normal) var(--lg-easing-spring) backwards; }
+    .pr:is([data-hot], :focus-within) .actions > .review:nth-child(2) { animation-delay: 30ms; }
+    .pr:is([data-hot], :focus-within) .actions > .review:nth-child(3) { animation-delay: 60ms; }
     @keyframes cap-in { from { opacity: 0; transform: scale(0.92); } }
     /* Profile switch: flips on a profile change (panel.js setView); its back face stays hidden, so the new face turns in. */
     #view { backface-visibility: hidden; }
