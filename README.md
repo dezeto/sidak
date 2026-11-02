@@ -23,6 +23,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Next** line on top: the Inbox PR waiting on you longest (VIPs first), else your own PR that needs you most. A tap opens it.
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`
   (deleted after a week). The card's **Copy fix list** copies its path to hand to Claude, and Fix reads it by itself.
+- **Token use** in the footer: what today's reviews used (hover for cache reads), each card's run in its icon's tooltip, and
+  `Auto 3/10` for auto review's daily budget.
 - **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (To do with your drafts folded under it, Waiting, Ready) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.

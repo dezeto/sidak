@@ -180,6 +180,20 @@ const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
 // profile always (its account pays), Auto only while auto review is on. Set-once settings (sync interval, stale cut-off) stay in the card.
 // The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
+// Today's reviews from state.json (render): their tokens for the footer, and auto's runs against pr-board auto's cap of 10 a day.
+// ponytail: state.json keeps one run per PR, so a PR reviewed twice today counts once; a usage log if that ever matters.
+const AUTO_CAP = 10;
+let today = { tokens: 0, cached: 0, auto: 0 };
+const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumSignificantDigits: 3 });
+function countToday(state) {
+  const midnight = new Date().setHours(0, 0, 0, 0) / 1000;
+  const runs = Object.values(state).filter((entry) => (entry.run ?? 0) >= midnight);
+  today = {
+    tokens: runs.reduce((sum, entry) => sum + (entry.tokens ?? 0), 0),
+    cached: runs.reduce((sum, entry) => sum + (entry.cached ?? 0), 0),
+    auto: runs.filter((entry) => entry.auto).length,
+  };
+}
 function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) =>
@@ -189,7 +203,12 @@ function renderFoot() {
     profile && pick(profile, 'Claude profile for new reviews'),
     pick(label('model'), 'Model for new reviews'),
     pick(label('effort'), 'Effort for new reviews'),
-    settings.auto?.on && pick('Auto', 'Auto review is on'),
+    settings.auto?.on && pick(`Auto ${today.auto}/${AUTO_CAP}`, `Auto review is on, ${today.auto} of its ${AUTO_CAP} runs today used`),
+    today.tokens && el('span', {
+      className: 'used',
+      textContent: `${compact.format(today.tokens)} tokens`,
+      title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
+    }),
   ].filter(Boolean));
 }
 function showSettings() {
@@ -391,7 +410,8 @@ function prRow(pr) {
   const vip = isVip(pr, settings.vip);
   const red = (!pr.mine && CHECKS[pr.checks]) || '';
   const [iconId, mark] = statusMark(pr);
-  const marks = [mark, vip && 'VIP author', red].filter(Boolean);
+  const used = pr.tokens && `${compact.format(pr.tokens)} tokens`;
+  const marks = [mark, vip && 'VIP author', red, used].filter(Boolean);
   claude.replaceChildren(icon(iconId), ...(vip ? [icon('i-star', 'vip')] : []), ...(red ? [el('span', { className: 'red' })] : []));
   claude.dataset.state = pr.claude ?? '';
   claude.title = marks.join(' · ');
@@ -553,6 +573,7 @@ function board(sections, state) {
     pr.verdict = entry?.verdict ?? null;
     pr.tldr = entry?.tldr ?? null;
     pr.report = entry?.report ?? null;
+    pr.tokens = entry?.tokens ?? null;
     pr.followUp = followUp(pr, entry);
   }
   // The VIP field suggests everyone on these PRs, authors and reviewers, who is not a VIP yet.
@@ -667,6 +688,7 @@ async function render() {
   showMe();
   if (!settingsWrites) settings = stored;
   save('settings', settings);
+  countToday(state);
   showSettings();
   const syncStatus = syncError
     ? `Sync failed: ${syncError}`

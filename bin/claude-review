@@ -9,6 +9,8 @@
 #   DEPTH=quick ...                       AC from the diff + blocking findings only, no mutation run; default full
 #   AUTO=1 ...                            started by pr-board auto: state.json marks the run "auto": true
 set -u
+# The whole script in one block, read before any of it runs: an edit while a review is open cannot shift what is left to read.
+{
 SIDAK_DIR=${SIDAK_DIR:-${0:A:h:h}}
 cfg() { jq -r "$@" $SIDAK_DIR/config.json; }
 login=$(cfg .login) repos=$(cfg .repos) rules=$(cfg .rulesRepo); repos=${repos/#\~/$HOME}
@@ -34,9 +36,11 @@ STATE=$SIDAK_DIR/state.json
 [[ $(gh pr view $n -R $REPO --json author --jq .author.login 2>/dev/null) == $login ]] && mine=1 || mine=""
 [[ -n $mine ]] && HANDOFF=$SIDAK_DIR/reviews/$repo-$n.md || HANDOFF=$SIDAK_DIR/handoffs/$repo-$n.md
 mkdir -p ${HANDOFF:h}
-mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" "$(git -C $wt rev-parse HEAD 2>/dev/null)" "$mine" <<'PY'
-import json, os, re, sys, time
-path, key, state, model, depth, run, auto, verdict, handoff, sha, mine = sys.argv[1:]
+# The run's Claude session logs: Claude Code keeps them under its config dir, in a folder named like memdir's.
+logs=${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/${wt//[^a-zA-Z0-9]/-}
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" "$(git -C $wt rev-parse HEAD 2>/dev/null)" "$mine" "$logs" <<'PY'
+import datetime, glob, json, os, re, sys, time
+path, key, state, model, depth, run, auto, verdict, handoff, sha, mine, logs = sys.argv[1:]
 data = json.load(open(path)) if os.path.exists(path) else {}
 prev = data.get(key, {})
 # A newer run on this PR owns the entry: the old tab the opener just closed must not mark it failed.
@@ -58,6 +62,20 @@ if os.path.exists(handoff) and os.path.getmtime(handoff) > int(run):
     if tldr: data[key]["tldr"] = "\n".join(tldr)
     # The panel's Mine card copies its path.
     if mine: data[key]["report"] = handoff
+# Tokens this run's sessions used (subagents too), for the panel's footer and the card's tooltip: tokens is what was new (input,
+# cache writes, output), cached the cache reads. A message's usage repeats on each of its content blocks, so once per message id.
+usage = {}
+for log in glob.glob(f"{logs}/**/*.jsonl", recursive=True):
+    if os.path.getmtime(log) < int(run): continue
+    for line in open(log):
+        entry = json.loads(line) if '"usage"' in line else {}
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        at = entry.get("timestamp")
+        if message.get("usage") and at and datetime.datetime.fromisoformat(at.replace("Z", "+00:00")).timestamp() >= int(run):
+            usage[message.get("id")] = message["usage"]
+if usage:
+    data[key]["tokens"] = sum(u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + u.get("output_tokens", 0) for u in usage.values())
+    data[key]["cached"] = sum(u.get("cache_read_input_tokens", 0) for u in usage.values())
 json.dump(data, open(path, "w"))
 PY
 }
@@ -166,3 +184,4 @@ rm -f "$sys"; cd $CRM
 # posted first: it sets $verdict even when claude exited 0.
 if posted || [[ $rc == 0 ]]; then mark reviewed; else mark failed; fi
 finish $rc
+}; exit

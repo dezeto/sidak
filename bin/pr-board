@@ -74,11 +74,15 @@ for key, entry in state.items():
     repo, n = key.split("/", 1)[1].split("#")
     # A minute's grace: a run marks itself running before its process shows up in ps.
     if entry.get("state") != "running" or (repo, n) in alive or time.time() * 1000 - entry["at"] < 60000: continue
+    if entry.get("depth") == "fix":
+        state[key] = entry.get("prev") or None
+        changed = True
+        continue
     notes = [f for f in (f"{sidak}/reviews/{repo}-{n}.md", f"{sidak}/handoffs/{repo}-{n}.md") if os.path.exists(f) and os.path.getmtime(f) > entry.get("run", 0)]
     entry.update(state="reviewed" if notes else "failed", at=int(time.time() * 1000))
     if notes and "/reviews/" in notes[0]: entry["report"] = notes[0]
     changed = True
-if changed: json.dump(state, open(state_path, "w"))
+if changed: json.dump({key: entry for key, entry in state.items() if entry}, open(state_path, "w"))
 PY
 }
 
