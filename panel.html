@@ -163,13 +163,26 @@
   :root[data-remote] .pr { position: relative; transition: background-color var(--lg-duration-fast), transform 0.25s var(--lg-easing-spring); }
   :root[data-remote] .pr[data-swipe] { transition: none; }
   :root[data-remote] :is(.column, .stack, details) { overflow-x: clip; }
+  /* The uncovered action is a Liquid Glass capsule in the gap the row leaves, as wide as the drag: tinted, blurred, lit at the rim, its
+     icon and word coming in as it grows; armed it swells and fills with its colour on a spring. */
   :root[data-remote] .pr[data-swipe]::after {
-    position: absolute; top: 0; bottom: 0; width: 100vw; display: flex; align-items: center; padding: 0 22px; box-sizing: border-box;
-    color: #fff; font-size: 15px; font-weight: 600; opacity: 0.55;
+    position: absolute; top: 4px; bottom: 4px; width: max(0px, calc(var(--dx, 0) * 1px - 10px)); overflow: hidden; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center; padding-left: 26px; border-radius: 20px; white-space: nowrap;
+    color: #fff; font-size: 15px; font-weight: 600; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+    background: color-mix(in srgb, var(--tint) 45%, transparent) var(--glyph) no-repeat calc(50% - 30px) center / 18px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 0.5px rgba(255, 255, 255, 0.22), 0 8px 22px color-mix(in srgb, var(--tint) 30%, transparent);
+    -webkit-backdrop-filter: blur(14px) saturate(180%); backdrop-filter: blur(14px) saturate(180%);
+    transform: scale(0.9); opacity: 0.75; transition: transform 0.4s var(--lg-easing-spring), background-color 0.2s, opacity 0.2s;
   }
-  :root[data-remote] .pr[data-swipe='left']::after { content: 'Snooze'; left: 100%; background: #ff9f0a; }
-  :root[data-remote] .pr[data-swipe='right']::after { content: 'Skim'; right: 100%; justify-content: flex-end; background: #248a3d; }
-  :root[data-remote] .pr[data-armed]::after { opacity: 1; }
+  :root[data-remote] .pr[data-swipe='right']::after {
+    content: 'Snooze'; right: calc(100% + 10px); --tint: #e08600;
+    --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z'/%3E%3C/svg%3E");
+  }
+  :root[data-remote] .pr[data-swipe='left']::after {
+    content: 'Skim'; left: calc(100% + 10px); --tint: #248a3d;
+    --glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E");
+  }
+  :root[data-remote] .pr[data-armed]::after { transform: scale(1.04); opacity: 1; background-color: color-mix(in srgb, var(--tint) 88%, transparent); }
   /* Pull to refresh (app/remote.js): an arrow that fades in and turns as the list is pulled, green once a lift will sync. */
   .ptr { display: none; }
   :root[data-remote] .ptr {

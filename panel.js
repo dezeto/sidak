@@ -1172,7 +1172,8 @@ addEventListener('wheel', ({ deltaX, deltaY }) => {
 }, { passive: true });
 // On a touch screen a sideways swipe does the same. A mostly vertical drag scrolls, and one that starts in a field is the field's.
 let touch = null;
-// On the phone a row takes its own swipes, like Mail's: left snoozes it until tomorrow, right skims it (an Inbox PR with Skim free).
+// On the phone a row takes its own swipes, like Mail's: right snoozes it until tomorrow (the capsule on the left), left skims it (an
+// Inbox PR with Skim free).
 // Past 90 px it is armed (panel.html .pr[data-armed]); a swipe that starts on a row never changes the tab.
 const phoneUI = document.documentElement.hasAttribute('data-remote');
 let rowSwipe = null, swallowClick = false;
@@ -1191,8 +1192,11 @@ addEventListener('touchmove', ({ touches: [t] }) => {
     s.on = true;
   }
   const skim = s.row.querySelector('.review[data-depth="quick"]:not(:disabled)');
-  s.dx = dx > 0 && !skim ? 0 : dx;
-  s.row.style.transform = `translateX(${s.dx}px)`;
+  s.dx = dx < 0 && !skim ? 0 : dx;
+  // Past 120 px the row drags heavier, like iOS's rubber band; --dx sizes the glass capsule it uncovers (panel.html).
+  const far = Math.abs(s.dx), shown = Math.sign(s.dx) * (far <= 120 ? far : 120 + (far - 120) * 0.35);
+  s.row.style.transform = `translateX(${shown}px)`;
+  s.row.style.setProperty('--dx', Math.abs(shown));
   s.row.dataset.swipe = s.dx < 0 ? 'left' : 'right';
   s.row.toggleAttribute('data-armed', Math.abs(s.dx) > 90);
 }, { passive: true });
@@ -1204,8 +1208,13 @@ addEventListener('touchend', ({ changedTouches: [end] }) => {
     row.style.transform = '';
     delete row.dataset.swipe;
     row.removeAttribute('data-armed');
-    if (dx < -90) { toggleSnooze(row.dataset.key); toast('Snoozed until tomorrow'); }
-    else if (dx > 90) row.querySelector('.review[data-depth="quick"]')?.click();
+    // A snoozed row sits in the Stale fold (snoozed until … on its meta line); the same swipe there brings it back.
+    if (dx > 90) {
+      const was = (settings.snooze?.[row.dataset.key] ?? 0) > Date.now();
+      toggleSnooze(row.dataset.key);
+      toast(was ? 'Back from snooze' : 'Snoozed until tomorrow · it waits in Stale');
+    }
+    else if (dx < -90) row.querySelector('.review[data-depth="quick"]')?.click();
     // Then the tap iOS may send for the lift is not the row's (it would open the sheet).
     swallowClick = true;
     setTimeout(() => (swallowClick = false), 400);
