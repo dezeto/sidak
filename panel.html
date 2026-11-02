@@ -143,6 +143,10 @@
   :is(#tabs, .seg) button[aria-pressed='true'], .space[aria-pressed='true'] { background: var(--lg-bg-pressed); color: var(--lg-ink); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); }
   .n { font-variant-numeric: tabular-nums; color: var(--lg-ink-muted); }
   #tabs .n[data-live] { color: var(--amber); }
+  /* Inbox tab: a red dot beside the count while a PR I reviewed is back with new commits or a new request (a follow-up card). */
+  body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after {
+    content: ''; flex: none; align-self: flex-start; width: 6px; height: 6px; margin: 5px 0 0 -2px; border-radius: 50%; background: var(--dot-red);
+  }
   @media (prefers-contrast: more) { :is(#tabs, .seg) button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px CanvasText; } }
 
   /* Settings: a glass card that rises out of the footer (a tap on its words) over the bottom of the list, one line per setting,
