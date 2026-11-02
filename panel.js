@@ -361,12 +361,6 @@ function prRow(pr) {
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
   if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
-  // My own PRs' reason line already names failing checks.
-  const label = (!pr.mine && CHECKS[pr.checks]) || '';
-  const checks = Object.assign(row.querySelector('.checks'), { title: label, ariaLabel: label || null });
-  if (label) checks.append(icon('i-x'));
-  if (label) checks.setAttribute('role', 'img');
-  checks.dataset.state = pr.checks ?? '';
 
   // bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
   const openInCmux = (depth) => (event) => {
@@ -392,13 +386,16 @@ function prRow(pr) {
   if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
   // The status icon at the card's left (statusMark): running it opens cmux, failed it skims again, like s; any other click is the card's.
-  const [iconId, mark] = statusMark(pr);
-  // A VIP author's card wears a gold star on the icon's corner.
+  // Badges on the icon's corners: a gold star for a VIP author (top), a red dot for failing checks (bottom; my own PRs' icon and
+  // reason line already say so).
   const vip = isVip(pr, settings.vip);
-  claude.replaceChildren(icon(iconId), ...(vip ? [icon('i-star', 'vip')] : []));
+  const red = (!pr.mine && CHECKS[pr.checks]) || '';
+  const [iconId, mark] = statusMark(pr);
+  const marks = [mark, vip && 'VIP author', red].filter(Boolean);
+  claude.replaceChildren(icon(iconId), ...(vip ? [icon('i-star', 'vip')] : []), ...(red ? [el('span', { className: 'red' })] : []));
   claude.dataset.state = pr.claude ?? '';
-  claude.title = vip ? `${mark} · VIP` : mark;
-  claude.ariaLabel = vip ? `${mark}, VIP author` : mark;
+  claude.title = marks.join(' · ');
+  claude.ariaLabel = marks.join(', ');
   const skim = (event) => {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
