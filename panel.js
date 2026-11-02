@@ -482,6 +482,11 @@ function prRow(pr) {
       const button = el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip, ariaKeyShortcuts: key });
       button.dataset.depth = action;
       button.append(el('kbd', { textContent: key, ariaHidden: 'true' }));
+      // Auto self-checks new commits on my PR (pr-board auto); Nudge waits for that fix list, so reviewers see a checked head.
+      if (action === 'nudge' && settings.auto?.on && pr.checkedSha && pr.head && pr.checkedSha !== pr.head) {
+        button.disabled = true;
+        button.title = 'Waits for Auto to self-check your new commits (10 minutes after the last push)';
+      }
       actions.prepend(button);
     }
   }
@@ -606,6 +611,8 @@ function board(sections, state) {
     pr.verdict = entry?.verdict ?? null;
     pr.tldr = entry?.tldr ?? null;
     pr.report = entry?.report ?? null;
+    // The head a self-check last read (claude-review's sha): newer commits on my PR wait for Auto's next one before a Nudge.
+    pr.checkedSha = entry?.report ? entry.sha ?? null : null;
     pr.tokens = entry?.tokens ?? null;
     pr.followUp = followUp(pr, entry);
   }

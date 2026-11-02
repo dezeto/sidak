@@ -24,7 +24,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Learns from your corrections**: when you delete or reword one of Claude's inline comments after a review posts, the board
   notices within the hour (for a week) and the next reviews get it as taste: no points like the deleted ones, phrasing like yours.
 - **Auto self-checks your own PRs first**: with Auto on, each PR you open ready or move out of draft gets a quick self-check (its
-  fix list) ahead of anyone else's review; approved ones are skipped.
+  fix list) ahead of anyone else's review; approved ones are skipped. Push to it and, 10 quiet minutes later, Auto checks it
+  again; Nudge waits for that fix list, so reviewers get a head your own check has read.
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`
   (deleted after a week). The card's **Copy fix list** copies its path to hand to Claude, and Fix reads it by itself.
 - **Token use** in the footer: what today's reviews used (hover for cache reads), each card's run in its icon's tooltip, and

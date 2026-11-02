@@ -231,12 +231,21 @@ since_path = os.path.join(os.path.dirname(state_path), "selfcheck-since")
 if not os.path.exists(since_path): open(since_path, "w").write(str(int(now)))
 since = int(open(since_path).read().strip() or now)
 OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:created-asc", type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  number isDraft createdAt updatedAt reviewDecision repository { name nameWithOwner } author { login }
+  number isDraft createdAt updatedAt reviewDecision headRefOid repository { name nameWithOwner } author { login }
+  commits(last: 1) { nodes { commit { committedDate } } }
   timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
-def ready_at(pr): return datetime.datetime.fromisoformat(((pr["timelineItems"]["nodes"] or [pr])[-1]["createdAt"]).replace("Z", "+00:00")).timestamp()
+iso = lambda text: datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+def ready_at(pr): return iso((pr["timelineItems"]["nodes"] or [pr])[-1]["createdAt"])
+# A self-checked PR I pushed to since (the head moved past the checked sha) is checked again once its last commit is 10 minutes old:
+# a burst of pushes is one change. claude-fix's pushes count too, so a Fix is followed by a fresh fix list before any Nudge.
+def recheck(pr):
+    entry = state.get(key(pr), {})
+    pushed = pr["commits"]["nodes"][0]["commit"]["committedDate"] if pr["commits"]["nodes"] else None
+    return (entry.get("state") == "reviewed" and entry.get("report") and entry.get("sha") and entry["sha"] != pr["headRefOid"]
+            and pushed and now - iso(pushed) >= 600)
 own = subprocess.run(["gh", "api", "graphql", "-f", f"query={OWN}"], capture_output=True, text=True)
 mine = [pr for pr in json.loads(own.stdout)["data"]["search"]["nodes"]
-        if pr.get("reviewDecision") != "APPROVED" and ready_at(pr) >= since and eligible(pr) and not done(pr)] if own.returncode == 0 else []
+        if pr.get("reviewDecision") != "APPROVED" and eligible(pr) and (recheck(pr) or (ready_at(pr) >= since and not done(pr)))] if own.returncode == 0 else []
 todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
