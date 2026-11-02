@@ -286,7 +286,7 @@
   }
   #sheet::backdrop { background: var(--lg-bg-scrim); }
   /* A sheet with nothing focusable in it (This week) takes the focus itself on open; that is no focus to show. */
-  #sheet:focus { outline: none; }
+  #sheet, #sheet:focus, #sheet:focus-visible { outline: none; }
   @media (prefers-reduced-motion: no-preference) {
     #sheet[open] { animation: sheet-up var(--lg-duration-normal) var(--lg-easing-spring); }
     @keyframes sheet-up { from { transform: translateY(100%); } }
