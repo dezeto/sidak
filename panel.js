@@ -181,6 +181,7 @@ const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
 // profile always (its account pays), Auto only while auto review is on. Set-once settings (sync interval, stale cut-off) stay in the card.
 // The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
+const used = document.getElementById('used');
 // Today's reviews from state.json (render): their tokens for the footer, and auto's runs against settings.json autoCap (0: no limit).
 // ponytail: state.json keeps one run per PR, so a PR reviewed twice today counts once; a usage log if that ever matters.
 let today = { tokens: 0, cached: 0, auto: 0 };
@@ -198,23 +199,28 @@ function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) =>
     el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: settings`, ariaExpanded: !settingsFold.hidden, onclick: () => toggleSettings() });
+  // A sign: an icon for a mode that is on (Auto, Phone), with its count when it has one; a tap opens the settings too.
+  const sign = (iconId, what, text = '') => {
+    const button = Object.assign(pick(text, what), { className: 'pick sign', ariaLabel: `${what}: settings` });
+    button.prepend(icon(iconId));
+    return button;
+  };
   const profile = settings.profile || config.defaultProfile;
+  // The settings chip: what a click runs with, profile · model · effort, in one capsule.
   footConfig.replaceChildren(...[
-    profile && pick(profile, 'Claude profile for new reviews'),
-    // Model by its initial and effort as one word, O · Med; the tooltip names both.
-    pick(`${label('model')[0]} · ${label('effort')}`, `Model and effort for new reviews: ${label('model')}, ${label('effort')}`),
+    Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick chip' }),
     settings.auto?.on && (settings.autoCap
-      ? pick(`Auto ${today.auto}/${settings.autoCap}`, `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`)
-      : pick('Auto', `Auto review is on, no daily limit (${today.auto} today)`)),
-    // Phone access on: a phone icon, so an open tunnel is never forgotten; a tap opens the settings to turn it off.
-    phoneOn() && Object.assign(pick('', 'Phone access is on'), { className: 'pick phone', ariaLabel: 'Phone access is on: settings' }),
-    today.tokens && el('span', {
-      className: 'used',
-      textContent: compact.format(today.tokens),
-      title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
-    }),
+      ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `${today.auto}/${settings.autoCap}`)
+      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)`)),
+    // Phone access on: so an open tunnel is never forgotten.
+    phoneOn() && sign('i-phone', 'Phone access is on'),
   ].filter(Boolean));
-  footConfig.querySelector('.phone')?.append(icon('i-phone'));
+  // Today's usage sits by the sync time, both muted on the right.
+  Object.assign(used, {
+    hidden: !today.tokens,
+    textContent: compact.format(today.tokens),
+    title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
+  });
 }
 function showSettings() {
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
