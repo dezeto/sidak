@@ -339,7 +339,7 @@ let tldrIds = 0;
 // The card's status icon and its label, most pressing first: a run of Claude's (running, failed), else my own PR's blocker or wait
 // (authorState icon and pill), else where the PR stands with me: back since my review, reviewed, or waiting for my review.
 function statusMark(pr) {
-  if (pr.claude === 'running') return ['i-play', `${pr.auto ? 'Auto review' : 'Review'} running: open in cmux (o)`];
+  if (pr.claude === 'running') return ['i-play', `${pr.auto ? 'Auto review' : 'Review'} running (${pr.depth === 'full' ? 'Deep' : 'Skim'}): open in cmux (o)`];
   if (pr.claude === 'failed') return ['i-xcircle', 'Review failed: skim again (s)'];
   if (pr.mine) return [pr.next.icon, pr.next.pill[0].toUpperCase() + pr.next.pill.slice(1)];
   if (pr.followUp) return ['i-refresh', pr.followUp.why === 'requested' ? 'Re-requested your review' : 'New commits since your review'];
