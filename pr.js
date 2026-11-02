@@ -57,21 +57,21 @@ function authorState(pr, now = Date.now()) {
   const days = Math.floor((now - Date.parse(pr.updatedAt)) / 86400000);
   const updated = `updated ${days >= 1 ? `${days} d ago` : 'today'}`;
   const approved = by('APPROVED').length ? `approved by ${names(by('APPROVED'))}` : 'approved';
-  // [rank, pill, reason] per blocker, most severe first.
+  // [rank, pill, reason, icon] per blocker, most severe first. The panel shows the icon at the card's left, the pill as its label.
   const blockers = [
-    pr.mergeable === 'CONFLICTING' && [0, 'conflicts', 'conflicts with the base branch'],
-    (pr.checks === 'FAILURE' || pr.checks === 'ERROR') && [1, 'checks red', 'checks failing'],
-    pr.review === 'CHANGES_REQUESTED' && [2, 'changes asked', `${names(by('CHANGES_REQUESTED')) || 'a reviewer'} asked for changes`],
-    pr.unresolved > 0 && [3, threads, `${threads} open`],
+    pr.mergeable === 'CONFLICTING' && [0, 'conflicts', 'conflicts with the base branch', 'i-alert'],
+    (pr.checks === 'FAILURE' || pr.checks === 'ERROR') && [1, 'checks red', 'checks failing', 'i-xcircle'],
+    pr.review === 'CHANGES_REQUESTED' && [2, 'changes asked', `${names(by('CHANGES_REQUESTED')) || 'a reviewer'} asked for changes`, 'i-edit'],
+    pr.unresolved > 0 && [3, threads, `${threads} open`, 'i-comment'],
   ].filter(Boolean);
   const reason = blockers.map(([, , text]) => text).join(' · ');
-  if (pr.review === 'DRAFT') return { group: 'draft', rank: 6, pill: null, reason: reason || updated, action: 'ready' };
+  if (pr.review === 'DRAFT') return { group: 'draft', rank: 6, pill: 'draft', reason: reason || updated, action: 'ready', icon: 'i-pr' };
   if (blockers.length) {
-    const [[rank, pill]] = blockers;
-    return { group: 'needs', rank, pill: blockers.length > 1 ? `${pill} +${blockers.length - 1}` : pill, reason, action: 'fix' };
+    const [[rank, pill, , icon]] = blockers;
+    return { group: 'needs', rank, pill: blockers.length > 1 ? `${pill} +${blockers.length - 1}` : pill, reason, action: 'fix', icon };
   }
-  if (pr.review === 'APPROVED' && pr.checks === 'SUCCESS') return { group: 'ready', rank: 5, pill: null, reason: approved, action: 'merge' };
-  if (pr.review === 'APPROVED') return { group: 'waiting', rank: 4, pill: 'awaiting checks', reason: approved, action: null };
+  if (pr.review === 'APPROVED' && pr.checks === 'SUCCESS') return { group: 'ready', rank: 5, pill: 'ready to merge', reason: approved, action: 'merge', icon: 'i-done' };
+  if (pr.review === 'APPROVED') return { group: 'waiting', rank: 4, pill: 'awaiting checks', reason: approved, action: null, icon: 'i-clock' };
   // Nudge re-requests whoever is still pending, so with nobody requested there is nothing to press.
   const pending = by('PENDING');
   return {
@@ -80,6 +80,7 @@ function authorState(pr, now = Date.now()) {
     pill: pending.length ? `awaiting ${names(pending)}` : 'no reviewers',
     reason: by('APPROVED').length ? approved : `no reviews yet, ${updated}`,
     action: pending.length ? 'nudge' : null,
+    icon: pending.length ? 'i-hourglass' : 'i-person',
   };
 }
 

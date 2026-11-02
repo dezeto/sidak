@@ -48,9 +48,44 @@ print(json.dumps([{**pr, "movedAt": at} for pr in found["search"]["nodes"] if (a
 PY
 }
 
+# Reviews that ended without cleaning up after themselves (the tab closed before the trap ran, or the script died): a claude-review
+# or claude-fix whose process is gone leaves its worktree and a "running" entry. Removes such a worktree, settles the entry (reviewed
+# when its handoff or fix list was written during the run, else failed) and stops a watcher left behind (reparented to launchd).
+sweep() {
+  python3 - $STATE $SIDAK_DIR "$(cfg .repos)" <<'PY'
+import glob, json, os, re, signal, subprocess, sys, time
+state_path, sidak, repos = sys.argv[1], sys.argv[2], os.path.expanduser(sys.argv[3])
+alive = set()
+for line in subprocess.run(["ps", "-axo", "pid=,ppid=,command="], capture_output=True, text=True).stdout.splitlines():
+    pid, ppid, command = line.split(None, 2)
+    run = re.search(r"bin/claude-(?:review|fix) (\S+) (\d+)$", command)
+    if not run: continue
+    if ppid == "1": os.kill(int(pid), signal.SIGKILL)
+    else: alive.add((run[1], run[2]))
+for wt in glob.glob(f"{repos}/*/.claude/worktrees/review-*"):
+    repo, n = wt.split("/")[-4], wt.rsplit("-", 1)[1]
+    if (repo, n) in alive: continue
+    checkout = wt.rsplit("/.claude/", 1)[0]
+    if subprocess.run(["git", "-C", checkout, "worktree", "remove", "--force", wt], capture_output=True).returncode:
+        subprocess.run(["rm", "-rf", "--", wt])
+state = json.load(open(state_path))
+changed = False
+for key, entry in state.items():
+    repo, n = key.split("/", 1)[1].split("#")
+    # A minute's grace: a run marks itself running before its process shows up in ps.
+    if entry.get("state") != "running" or (repo, n) in alive or time.time() * 1000 - entry["at"] < 60000: continue
+    notes = [f for f in (f"{sidak}/reviews/{repo}-{n}.md", f"{sidak}/handoffs/{repo}-{n}.md") if os.path.exists(f) and os.path.getmtime(f) > entry.get("run", 0)]
+    entry.update(state="reviewed" if notes else "failed", at=int(time.time() * 1000))
+    if notes and "/reviews/" in notes[0]: entry["report"] = notes[0]
+    changed = True
+if changed: json.dump(state, open(state_path, "w"))
+PY
+}
+
 board() {
   # Self-check fix lists (claude-review on my own PR) last a week.
   rm -f -- $SIDAK_DIR/reviews/*.md(N.mh+168)
+  sweep
   local s=$(<$STATE) moved=$(updated)
   # The panel's stale cut-off (settings.json staleDays, default 30, 0 = off) keeps the menu bar count in step with its Inbox.
   local days=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("staleDays", 30)))' $SETTINGS 2>/dev/null || print 30)

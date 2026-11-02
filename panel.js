@@ -297,6 +297,17 @@ function avatar(reviewer) {
 // The cards whose TL;DR is open, kept across the re-render every sync does; ids tie each toggle to its block.
 const openTldrs = new Set();
 let tldrIds = 0;
+// The card's status icon and its label, most pressing first: a run of Claude's (running, failed), else my own PR's blocker or wait
+// (authorState icon and pill), else where the PR stands with me: back since my review, reviewed, or waiting for my review.
+function statusMark(pr) {
+  if (pr.claude === 'running') return ['i-play', `${pr.auto ? 'Auto review' : 'Review'} running: open in cmux (o)`];
+  if (pr.claude === 'failed') return ['i-xcircle', 'Review failed: skim again (s)'];
+  if (pr.mine) return [pr.next.icon, pr.next.pill[0].toUpperCase() + pr.next.pill.slice(1)];
+  if (pr.followUp) return ['i-refresh', pr.followUp.why === 'requested' ? 'Re-requested your review' : 'New commits since your review'];
+  if (pr.claude === 'reviewed') return ['i-done', VERDICTS[pr.verdict]?.[0] ?? 'Reviewed'];
+  return ['i-eye', 'Waiting for your review'];
+}
+
 function prRow(pr) {
   const row = rowTemplate.cloneNode(true);
   row.href = pr.url;
@@ -381,29 +392,24 @@ function prRow(pr) {
   // Back in the Inbox after my review: its dot says to review again.
   if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
-  // The column already says running/reviewed, so only a run and a failure get a badge: running it opens cmux, failed it skims
-  // again, like s.
-  claude.replaceChildren(...(pr.claude === 'running' ? [icon('i-play')] : pr.claude === 'failed' ? ['failed'] : []));
+  // The status icon at the card's left (statusMark): running it opens cmux, failed it skims again, like s; any other click is the card's.
+  const [iconId, mark] = statusMark(pr);
+  claude.replaceChildren(icon(iconId));
   claude.dataset.state = pr.claude ?? '';
-  claude.title = pr.claude === 'failed' ? 'Review failed: skim again (s)' : 'Open in cmux';
-  claude.ariaLabel = claude.title;
+  claude.title = mark;
+  claude.ariaLabel = mark;
   const skim = (event) => {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
   };
-  claude.onclick = pr.claude === 'reviewed' ? null : pr.claude === 'failed' ? skim : openInCmux(null);
+  claude.onclick = pr.claude === 'failed' ? skim : pr.claude === 'running' ? openInCmux(null) : null;
   const actions = row.querySelector('.actions');
   if (pr.mine) {
-    // My PR: a pill after the title when it says more than the tab (the blocker, who is awaited), the reason as the second line,
-    // the next step as a button in front of Skim / Deep (a self-check: claude-review prints the findings instead of posting them).
-    const { group, pill, reason, action } = pr.next;
-    // The status dot follows the group: red needs me, blue waiting, green ready, grey draft.
+    // My PR: the status icon says what it waits on (statusMark), the reason is the second line, the next step a button in front of
+    // Skim / Deep (a self-check: claude-review writes the findings to a fix list instead of posting them).
+    const { group, reason, action } = pr.next;
+    // The status colour follows the group: red needs me, blue waiting, green ready, grey draft.
     row.dataset.group = group;
-    if (pill) {
-      const tag = el('span', { className: 'pill', textContent: pill });
-      tag.dataset.group = group;
-      row.querySelector('.title').replaceChildren(el('span', { className: 'name', textContent: pr.title }), tag);
-    }
     // After a self-check the status word copies its fix list's path, to hand to Claude (Fix reads it by itself).
     const state = row.querySelector('.state');
     state.textContent = '';

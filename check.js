@@ -89,22 +89,22 @@ const updated = Date.parse('2026-10-20T00:00:00Z'); // the fixture's updatedAt
 const state = (overrides) => authorState(pr(overrides), updated + 2 * day);
 const twoThreads = { reviewThreads: { nodes: [{ isResolved: false }, { isResolved: false }] } };
 assert.deepEqual(state({ mergeable: 'CONFLICTING', ...red, ...twoThreads }), {
-  group: 'needs', rank: 0, pill: 'conflicts +2', reason: 'conflicts with the base branch · checks failing · 2 threads open', action: 'fix',
+  group: 'needs', rank: 0, pill: 'conflicts +2', reason: 'conflicts with the base branch · checks failing · 2 threads open', action: 'fix', icon: 'i-alert',
 });
 assert.deepEqual(state({ reviewDecision: 'CHANGES_REQUESTED', latestOpinionatedReviews: { nodes: [review('CHANGES_REQUESTED', 'j')] }, ...twoThreads }), {
-  group: 'needs', rank: 2, pill: 'changes asked +1', reason: 'j asked for changes · 2 threads open', action: 'fix',
+  group: 'needs', rank: 2, pill: 'changes asked +1', reason: 'j asked for changes · 2 threads open', action: 'fix', icon: 'i-edit',
 });
 assert.equal(state({ reviewThreads: { nodes: [{ isResolved: false }] } }).pill, '1 thread');
 assert.equal(state(red).rank, 1);
 const requested = { reviewRequests: { nodes: ['a', 'b', 'c'].map((login) => ({ requestedReviewer: user(login) })) } };
-assert.deepEqual(state(requested), { group: 'waiting', rank: 4, pill: 'awaiting a, b +1', reason: 'no reviews yet, updated 2 d ago', action: 'nudge' });
+assert.deepEqual(state(requested), { group: 'waiting', rank: 4, pill: 'awaiting a, b +1', reason: 'no reviews yet, updated 2 d ago', action: 'nudge', icon: 'i-hourglass' });
 assert.equal(authorState(pr(requested), updated + 3600000).reason, 'no reviews yet, updated today');
-assert.deepEqual(state({}), { group: 'waiting', rank: 4, pill: 'no reviewers', reason: 'no reviews yet, updated 2 d ago', action: null });
+assert.deepEqual(state({}), { group: 'waiting', rank: 4, pill: 'no reviewers', reason: 'no reviews yet, updated 2 d ago', action: null, icon: 'i-person' });
 const approvals = { reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [review('APPROVED', 'j'), review('APPROVED', 'c')] } };
-assert.deepEqual(state({ ...green, ...approvals }), { group: 'ready', rank: 5, pill: null, reason: 'approved by j, c', action: 'merge' });
+assert.deepEqual(state({ ...green, ...approvals }), { group: 'ready', rank: 5, pill: 'ready to merge', reason: 'approved by j, c', action: 'merge', icon: 'i-done' });
 assert.equal(state(approvals).action, null); // approved, checks not green yet: nothing to press
-assert.deepEqual(state({ isDraft: true }), { group: 'draft', rank: 6, pill: null, reason: 'updated 2 d ago', action: 'ready' });
-assert.deepEqual(state({ isDraft: true, ...red }), { group: 'draft', rank: 6, pill: null, reason: 'checks failing', action: 'ready' });
+assert.deepEqual(state({ isDraft: true }), { group: 'draft', rank: 6, pill: 'draft', reason: 'updated 2 d ago', action: 'ready', icon: 'i-pr' });
+assert.deepEqual(state({ isDraft: true, ...red }), { group: 'draft', rank: 6, pill: 'draft', reason: 'checks failing', action: 'ready', icon: 'i-pr' });
 
 // Stale: updatedAt older than the cut-off; 0 is off
 assert.equal(isStale(pr({}), 30, updated + 31 * day), true);
