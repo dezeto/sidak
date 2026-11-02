@@ -295,7 +295,8 @@
   .claude:is([data-state='running'], [data-state='failed']):hover { filter: brightness(1.3); }
   .pr { --status: var(--dot-amber); }
   .pr[data-claude='running'], .pr[data-group='waiting'] { --status: var(--dot-blue); }
-  .pr[data-claude='reviewed'], .pr[data-group='ready'] { --status: var(--dot-green); }
+  /* My own PRs keep their group's colour after a self-check: reviewed is green on others' PRs only. */
+  .pr[data-claude='reviewed']:not([data-group]), .pr[data-group='ready'] { --status: var(--dot-green); }
   .pr[data-claude='failed'], .pr[data-group='needs'] { --status: var(--dot-red); }
   .pr[data-follow] { --status: var(--dot-amber); }
   .pr[data-group='draft'] { --status: var(--grey); }
