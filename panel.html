@@ -195,14 +195,19 @@
   .ios-nav { display: none; }
   :root[data-remote] .ios-nav {
     display: flex; align-items: flex-end; justify-content: center; position: fixed; top: 0; left: 0; right: 0; z-index: 5; box-sizing: border-box;
-    height: calc(env(safe-area-inset-top, 0px) + 44px); padding: 0 0 11px; border: 0; border-bottom: 0.5px solid var(--group-line);
-    background: color-mix(in srgb, var(--ambient) 70%, transparent); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
-    color: var(--lg-ink); font: inherit; font-size: 17px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity var(--lg-duration-fast);
+    height: calc(env(safe-area-inset-top, 0px) + 44px); padding: 0 0 11px; border: 0; border-bottom: 0.5px solid var(--group-line); background: none;
+    color: var(--lg-ink); font: inherit; font-size: 17px; font-weight: 600; visibility: hidden;
+  }
+  /* The blur sits on its own layer behind the word, and the bar shows without a fade: WebKit blurs the text of an element that has a
+     backdrop filter while its opacity changes. */
+  :root[data-remote] .ios-nav::after {
+    content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--ambient) 72%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
   }
   :root[data-remote] .ios-nav::before { content: attr(data-title); }
   :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav::before { content: 'Results'; }
-  :root[data-remote][data-compact] .ios-nav { opacity: 1; pointer-events: auto; }
-  :root[data-remote][data-settings] .ios-nav { opacity: 0; pointer-events: none; }
+  :root[data-remote][data-compact] .ios-nav { visibility: visible; }
+  :root[data-remote][data-settings] .ios-nav { visibility: hidden; }
   /* An empty list: a quiet card with a check, not bare text. */
   :root[data-remote] .empty { margin: 0 16px; padding: 28px 16px; border-radius: 22px; background: var(--group); color: var(--lg-ink-muted); font-size: 15px; text-align: center; }
   :root[data-remote] .empty::before {
@@ -221,8 +226,10 @@
   :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox'] .n { background: var(--dot-red); color: #fff; }
   :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after { display: none; }
   :root[data-remote] #tabs button { gap: 5px; padding: 0 2px; }
-  /* Reviewed is history, nothing to act on: no badge, so its word fits. */
-  :root[data-remote] #tabs button[value='Reviewed'] .n { display: none; }
+  /* Each tab as wide as its word and badge, the rest shared out, so a long one (Reviewed 10) never cuts its word. */
+  :root[data-remote] #tabs button { flex: 1 1 auto; }
+  :root[data-remote] #tabs::before { left: 0; width: var(--w, 0); transform: translateX(var(--x, 0)); }
+  @media (prefers-reduced-motion: no-preference) { :root[data-remote] #tabs[data-glide='move']::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring), width var(--lg-duration-normal) var(--lg-easing-spring); } }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
   :root[data-remote] #toast {
     top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;

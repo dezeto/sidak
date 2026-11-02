@@ -615,6 +615,13 @@ function markActive(glide = false) {
   const shown = [...tabsBar.children].filter((button) => button.dataset.group === document.body.dataset.view);
   tabsBar.style.setProperty('--n', shown.length || 1);
   tabsBar.style.setProperty('--i', Math.max(shown.findIndex((button) => button.value === tab), 0));
+  // The phone's tabs are as wide as their words: the lozenge there takes the open tab's measured place (--x, --w) instead.
+  const place = () => {
+    const on = shown.find((button) => button.value === tab);
+    if (on?.offsetWidth) { tabsBar.style.setProperty('--x', `${on.offsetLeft}px`); tabsBar.style.setProperty('--w', `${on.offsetWidth}px`); }
+  };
+  place();
+  requestAnimationFrame(place); // again once the counts and fonts have laid out
   tabsBar.dataset.glide = glide ? 'move' : 'still';
   // The phone's large title (panel.html #foot::before) is the open tab.
   document.getElementById('foot').dataset.title = tab;
