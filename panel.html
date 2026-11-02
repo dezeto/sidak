@@ -73,15 +73,28 @@
   /* Phone reach: the header's controls float at the bottom, where a thumb is, as an iOS 26 glass tab bar over the list; the footer
      (settings, signs, sync) ends the list instead, and the page leaves room under it for the bar. */
   /* No backdrop filter on the phone's body: one would make it the fixed bar's containing block instead of the screen. */
-  :root[data-remote] body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-remote] body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px)); -webkit-backdrop-filter: none; backdrop-filter: none; }
   :root[data-remote] header, :root[data-remote][data-scrolled] header {
     position: fixed; top: auto; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
-    bottom: max(12px, env(safe-area-inset-bottom, 0px)); z-index: 3; padding: 7px; border: 1px solid var(--lg-border-color); border-radius: 30px;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px), calc(var(--kb, 0px) + 8px)); z-index: 3; padding: 7px; border: 1px solid var(--lg-border-color); border-radius: 30px;
     background: var(--lg-bg-toolbar); box-shadow: var(--lg-highlight), var(--lg-shadow-elevated);
     -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
   }
   @media (prefers-contrast: more) { :root[data-remote] header { background: var(--lg-bg-primary); -webkit-backdrop-filter: none; backdrop-filter: none; } }
-  :root[data-remote] #foot, :root[data-remote][data-more] #foot { position: static; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  /* The footer (settings, signs, sync) stays put as a thin glass strip just above the bar. The glass is a ::before: a backdrop
+     filter on #foot itself would trap the fixed settings sheet inside it. Hidden while search has the keyboard. */
+  :root[data-remote] #foot, :root[data-remote][data-more] #foot {
+    position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 56px); z-index: 4; flex-wrap: nowrap; justify-content: space-between;
+    min-height: 36px; box-sizing: border-box; padding: 0 16px; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  :root[data-remote] #foot::before {
+    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 18px; background: var(--glass); box-shadow: var(--glass-rim);
+    -webkit-backdrop-filter: blur(5px) saturate(180%); backdrop-filter: blur(5px) saturate(180%);
+  }
+  :root[data-remote] #foot-config { margin-right: 0; }
+  :root[data-remote][data-settings] #foot::before { visibility: hidden; }
+  :root[data-remote]:has(.search:focus-within) #foot { display: none; }
   :root[data-remote] .next { margin-top: 14px; }
   :root[data-remote] :is(#search, #vip, .num) { font-size: 16px; }
   :root[data-remote] .pr:active { background: var(--row-hover); }
@@ -131,6 +144,16 @@
   /* Settings on the phone rise as a sheet from the bottom too, over the blurred list and tab bar. */
   :root[data-remote] #settings-fold { position: fixed; inset: auto max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); z-index: 6; }
   :root[data-remote] #settings { border-radius: 28px; background: var(--sheet-bg); box-shadow: var(--lg-highlight), var(--lg-shadow-high); }
+  /* Phone settings read like an iOS grouped list: one setting a row, label left, control right, thumb-size controls. */
+  :root[data-remote] #settings { grid-template-columns: minmax(0, 1fr); max-height: 78dvh; overflow-y: auto; padding: 6px 18px 14px; font-size: 15px; }
+  :root[data-remote] #settings::before { content: ''; display: block; width: 36px; height: 5px; margin: 4px auto 6px; border-radius: 3px; background: var(--lg-border-color); }
+  :root[data-remote] .set { flex-wrap: wrap; min-height: 52px; gap: 6px 10px; padding-block: 4px; box-sizing: border-box; }
+  :root[data-remote] .set:not(.vip) > :not(.l) { margin-left: auto; }
+  :root[data-remote] .set + .set { border-top: 0.5px solid var(--lg-border-subtle); }
+  :root[data-remote] .set > .l { font-size: 15px; white-space: nowrap; }
+  :root[data-remote] .seg { border-radius: 18px; }
+  :root[data-remote] .seg button { height: 32px; padding: 0 10px; border-radius: 16px; font-size: 13px; }
+  :root[data-remote] .num { width: 64px; height: 36px; border-radius: 18px; }
   :root[data-remote][data-settings] #foot > :not(#settings-fold) { visibility: hidden; }
   /* Phone Liquid Glass (iOS 26) on a plain background (black in dark mode): the tab bar, sheets and their buttons are clear glass
      over the list: tinted, heavily blurred and saturated, with a lit rim. */

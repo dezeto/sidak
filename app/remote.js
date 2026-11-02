@@ -3,6 +3,11 @@
 (() => {
   // Marks the page as the phone's: panel.html shows card actions without hover and hides what only works at the Mac.
   document.documentElement.dataset.remote = '1';
+  // iOS keeps a fixed bar at the bottom of the page behind the keyboard; --kb is the keyboard's height, so the bar (panel.html)
+  // rides on top of it while search is open, as Safari's own bar does.
+  const vv = window.visualViewport;
+  const kb = () => document.documentElement.style.setProperty('--kb', `${Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop))}px`);
+  if (vv) { vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); }
   const changed = new Set();
   // The Mac's lists, refetched every minute and when the phone comes back to the tab; the page's own keys (view, tab, snooze picks)
   // stay on the phone.
