@@ -105,9 +105,10 @@
   :root[data-remote] :is(.column, .stack) > h2 { padding: 22px 20px 8px; font-size: 20px; font-weight: 700; line-height: 25px; letter-spacing: 0; color: var(--lg-ink); }
   :root[data-remote] :is(.column, .stack) > h2::after, :root[data-remote] details.stale > summary::after { display: none; }
   :root[data-remote] .pr { margin: 0 16px; padding: 12px 14px; background-color: var(--group); }
-  :root[data-remote] .pr + .pr { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
-  :root[data-remote] :not(.pr) + .pr { border-top-left-radius: 22px; border-top-right-radius: 22px; }
-  :root[data-remote] .pr:not(:has(+ .pr)) { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+  :root[data-remote] .pr:not([data-first]) { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
+  /* data-first / data-last: the first and last shown row of each run (app/remote.js), so a search that hides rows keeps the corners. */
+  :root[data-remote] .pr[data-first] { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+  :root[data-remote] .pr[data-last] { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
   :root[data-remote] details.stale > summary { margin: 22px 16px 0; padding: 0 16px; min-height: 50px; border-radius: 22px; background: var(--group); font-size: 15px; font-weight: 600; color: var(--lg-ink); }
   :root[data-remote] details.stale[open] > summary { margin-bottom: 8px; }
   /* Next: a card at the top, what to do now; a tap opens that PR's sheet. */
@@ -137,6 +138,20 @@
     font-size: 13px; font-weight: 500; opacity: 0; transform: translate(-50%, 8px); pointer-events: none; transition: opacity var(--lg-duration-fast), transform var(--lg-duration-fast);
   }
   #toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
+  /* Phone search (app/remote.js): open, it takes the bar (over the keyboard, --kb) with an × capsule at its right; the avatar steps
+     aside, the large title reads Results and the Next card goes while a query is in. */
+  .search-close { display: none; }
+  :root[data-remote] .find:has(.search:focus-within, #search:not(:placeholder-shown)) .switch { display: none; }
+  :root[data-remote] .find:has(.search:focus-within, #search:not(:placeholder-shown)) .search-close {
+    display: grid; place-items: center; flex: none; width: 48px; height: 48px; padding: 0; border-radius: 50%; color: var(--lg-ink);
+    background: var(--glass); box-shadow: var(--glass-rim), var(--lg-shadow-elevated); -webkit-backdrop-filter: blur(5px) saturate(180%); backdrop-filter: blur(5px) saturate(180%);
+  }
+  .search-close .icon { width: 16px; height: 16px; }
+  :root[data-remote] .search { padding: 0 16px; gap: 8px; }
+  :root[data-remote] .search .icon { width: 18px; height: 18px; color: var(--lg-ink-muted); }
+  :root[data-remote] #search { font-size: 17px; }
+  :root[data-remote]:has(#search:not(:placeholder-shown)) #foot::before { content: 'Results'; }
+  :root[data-remote]:has(#search:not(:placeholder-shown)) .next { display: none; }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
   :root[data-remote] #toast {
     top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;
@@ -196,7 +211,8 @@
      of rows on rounded cells. */
   :root[data-remote] { --set-bg: #f2f2f7; --cell: #fff; }
   @media (prefers-color-scheme: dark) { :root[data-remote] { --set-bg: #1c1c1e; --cell: #2c2c2e; } }
-  :root[data-remote] #settings-fold { inset: calc(env(safe-area-inset-top, 0px) + 10px) 0 0; }
+  /* Below Safari's top controls and the status bar, so Done stays tappable. */
+  :root[data-remote] #settings-fold { inset: max(calc(env(safe-area-inset-top, 0px) + 14px), 64px) 0 0; }
   :root[data-remote] #settings-fold #settings {
     display: block; height: 100%; max-height: none; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain;
     padding: 6px max(16px, env(safe-area-inset-right, 0px)) calc(28px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));

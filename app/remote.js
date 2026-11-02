@@ -31,6 +31,30 @@
       seg.after(ctl);
       sync();
     }
+    // Search like Safari's: while it is open the avatar steps aside and an × capsule at its right clears and closes it.
+    const box = document.getElementById('search');
+    const close = Object.assign(document.createElement('button'), { type: 'button', className: 'search-close glass', ariaLabel: 'Close search' });
+    close.innerHTML = '<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    close.onclick = () => { box.value = ''; box.dispatchEvent(new Event('input', { bubbles: true })); box.blur(); };
+    box.placeholder = 'Search';
+    box.closest('.search').after(close);
+    // Rounded groups: mark the first and last shown row of each run of rows, after every render and every search.
+    const list = document.getElementById('list');
+    const edges = () => {
+      for (const parent of list.querySelectorAll('.column, .stack, details')) {
+        let run = [];
+        const end = () => { run.forEach((r, i) => { r.toggleAttribute('data-first', i === 0); r.toggleAttribute('data-last', i === run.length - 1); }); run = []; };
+        for (const child of parent.children) {
+          if (!child.matches('.pr')) end();
+          else if (!child.hidden) run.push(child);
+        }
+        end();
+      }
+    };
+    let queued = 0;
+    new MutationObserver(() => { cancelAnimationFrame(queued); queued = requestAnimationFrame(edges); })
+      .observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
+    edges();
     // iOS Settings: a title with Done, then the rows in labelled groups on rounded cards. The rows move, not copies, so panel.js keeps
     // its handles on them.
     const settings = document.getElementById('settings');
