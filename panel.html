@@ -195,19 +195,25 @@
   .ios-nav { display: none; }
   :root[data-remote] .ios-nav {
     display: flex; align-items: flex-end; justify-content: center; position: fixed; top: 0; left: 0; right: 0; z-index: 5; box-sizing: border-box;
-    height: calc(env(safe-area-inset-top, 0px) + 44px); padding: 0 0 11px; border: 0; border-bottom: 0.5px solid var(--group-line); background: none;
-    color: var(--lg-ink); font: inherit; font-size: 17px; font-weight: 600; visibility: hidden;
+    height: env(safe-area-inset-top, 0px); padding: 0 0 11px; border: 0; background: none; pointer-events: none;
+    color: var(--lg-ink); font: inherit; font-size: 17px; font-weight: 600;
   }
+  /* Always there under the status bar, like the Claude app's top: the list darkens and blurs as it runs under the clock; scrolled past
+     the large title it grows to hold the small one. */
+  :root[data-remote][data-compact] .ios-nav { height: calc(env(safe-area-inset-top, 0px) + 44px); border-bottom: 0.5px solid var(--group-line); pointer-events: auto; }
+  :root[data-remote]:not([data-compact]) .ios-nav::before { visibility: hidden; }
   /* The blur sits on its own layer behind the word, and the bar shows without a fade: WebKit blurs the text of an element that has a
      backdrop filter while its opacity changes. */
   :root[data-remote] .ios-nav::after {
-    content: ''; position: absolute; inset: 0; z-index: -1; background: color-mix(in srgb, var(--ambient) 72%, transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    content: ''; position: absolute; inset: 0; z-index: -1; background: var(--top-tint);
+    -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   }
   :root[data-remote] .ios-nav::before { content: attr(data-title); }
   :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav::before { content: 'Results'; }
-  :root[data-remote][data-compact] .ios-nav { visibility: visible; }
-  :root[data-remote][data-settings] .ios-nav { visibility: hidden; }
+  :root[data-remote][data-settings] .ios-nav { height: env(safe-area-inset-top, 0px); border-bottom: 0; }
+  :root[data-remote][data-settings] .ios-nav::before { visibility: hidden; }
+  :root[data-remote] { --top-tint: rgba(242, 242, 247, 0.8); }
+  @media (prefers-color-scheme: dark) { :root[data-remote] { --top-tint: rgba(24, 24, 26, 0.84); } }
   /* An empty list: a quiet card with a check, not bare text. */
   :root[data-remote] .empty { margin: 0 16px; padding: 28px 16px; border-radius: 22px; background: var(--group); color: var(--lg-ink-muted); font-size: 15px; text-align: center; }
   :root[data-remote] .empty::before {
