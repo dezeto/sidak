@@ -605,6 +605,11 @@ function stepTab(dir) {
 // The active list is the current profile's open tab: its button pressed, its column the one the popup shows.
 // The Inbox tab also lists what is running (.also), as a second section.
 // The glass lozenge (#tabs::before) sits under the open tab by its index among the current profile's tabs; it glides on a pick only.
+function placeLozenge() {
+  const on = [...tabsBar.children].find((button) => button.dataset.group === document.body.dataset.view && button.value === openTab[button.dataset.group]);
+  if (on?.offsetWidth) { tabsBar.style.setProperty('--x', `${on.offsetLeft}px`); tabsBar.style.setProperty('--w', `${on.offsetWidth}px`); }
+}
+const tabsResize = new ResizeObserver(() => placeLozenge());
 function markActive(glide = false) {
   for (const button of tabsBar.children) button.setAttribute('aria-pressed', button.value === openTab[button.dataset.group]);
   const tab = openTab[document.body.dataset.view];
@@ -616,12 +621,8 @@ function markActive(glide = false) {
   tabsBar.style.setProperty('--n', shown.length || 1);
   tabsBar.style.setProperty('--i', Math.max(shown.findIndex((button) => button.value === tab), 0));
   // The phone's tabs are as wide as their words: the lozenge there takes the open tab's measured place (--x, --w) instead.
-  const place = () => {
-    const on = shown.find((button) => button.value === tab);
-    if (on?.offsetWidth) { tabsBar.style.setProperty('--x', `${on.offsetLeft}px`); tabsBar.style.setProperty('--w', `${on.offsetWidth}px`); }
-  };
-  place();
-  requestAnimationFrame(place); // again once the counts and fonts have laid out
+  placeLozenge();
+  for (const button of shown) tabsResize.observe(button); // and again whenever a tab's width changes (a count, a font)
   tabsBar.dataset.glide = glide ? 'move' : 'still';
   // The phone's large title (panel.html #foot::before) is the open tab.
   document.getElementById('foot').dataset.title = tab;
