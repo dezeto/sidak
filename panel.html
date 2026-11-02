@@ -316,7 +316,7 @@
   /* Reviewed: the status word, with a chevron, opens the reviewer's TL;DR under the card (What, Found, Next); the labels keep a
      column of their own. */
   button.state { padding: 0; font-size: inherit; font-weight: 600; color: var(--state); }
-  button.state::after {
+  button.state[aria-controls]::after {
     content: ''; display: inline-block; width: 4px; height: 4px; margin: 0 2px 3px 7px; border: solid var(--lg-ink-muted); border-width: 0 1.5px 1.5px 0;
     rotate: 45deg; transition: rotate var(--lg-duration-fast), translate var(--lg-duration-fast);
   }

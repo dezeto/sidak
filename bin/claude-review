@@ -29,12 +29,14 @@ wt=$CRM/.claude/worktrees/review-$n
 
 # Review state lives in the extension folder, so the panel sees it and GitHub never does.
 STATE=$SIDAK_DIR/state.json
-# The reviewer's notes for the next run on this PR; also local only.
-HANDOFF=$SIDAK_DIR/handoffs/$repo-$n.md
+# The reviewer's notes for the next run on this PR; also local only. On my own PR (a self-check, nothing posted) the notes are the
+# review itself: a fix list in reviews/ to hand to a fixing session (claude-fix reads it), gone a week after (pr-board board).
+[[ $(gh pr view $n -R $REPO --json author --jq .author.login 2>/dev/null) == $login ]] && mine=1 || mine=""
+[[ -n $mine ]] && HANDOFF=$SIDAK_DIR/reviews/$repo-$n.md || HANDOFF=$SIDAK_DIR/handoffs/$repo-$n.md
 mkdir -p ${HANDOFF:h}
-mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" "$(git -C $wt rev-parse HEAD 2>/dev/null)" <<'PY'
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" "${DEPTH:-full}" "$started" "${AUTO:-}" "${verdict:-}" "$HANDOFF" "$(git -C $wt rev-parse HEAD 2>/dev/null)" "$mine" <<'PY'
 import json, os, re, sys, time
-path, key, state, model, depth, run, auto, verdict, handoff, sha = sys.argv[1:]
+path, key, state, model, depth, run, auto, verdict, handoff, sha, mine = sys.argv[1:]
 data = json.load(open(path)) if os.path.exists(path) else {}
 prev = data.get(key, {})
 # A newer run on this PR owns the entry: the old tab the opener just closed must not mark it failed.
@@ -54,6 +56,8 @@ if state == "reviewed" and sha: data[key]["sha"] = sha
 if os.path.exists(handoff) and os.path.getmtime(handoff) > int(run):
     tldr = re.findall(r"^[-*] *(?:What|Found|Next):.*$", open(handoff).read(), re.M)[:3]
     if tldr: data[key]["tldr"] = "\n".join(tldr)
+    # The panel's Mine card copies its path.
+    if mine: data[key]["report"] = handoff
 json.dump(data, open(path, "w"))
 PY
 }
@@ -83,7 +87,8 @@ close_tab() {
   ref=$($cmux workspace list 2>/dev/null | grep -E "review $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
   [[ -n $ref ]] && $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1
 }
-( while sleep 45; do posted && { mark reviewed; break; }; done
+# My own PR posts nothing, so only its fix list counts.
+( while [[ -z $mine ]] && sleep 45; do posted && { mark reviewed; break; }; done
   # Remove the worktree before closing: the HUP trap gets killed with the tab before its own cleanup finishes.
   # Marked again once handed off: that copies the handoff's TL;DR into state.json.
   until handed_off; do sleep 15; done; mark reviewed; sleep 10; git -C $CRM worktree remove --force "$wt" 2>/dev/null; close_tab ) &
@@ -98,7 +103,7 @@ for old in $CRM/.claude/worktrees/review-*(N); do
   { git -C $CRM worktree remove --force "$old" || rm -rf -- "$old"; } >/dev/null 2>&1 &
 done
 # Handoffs untouched for two weeks go; a PR open that long gets its re-review context from GitHub instead.
-rm -f -- ${HANDOFF:h}/*.md(N.m+14)
+rm -f -- $SIDAK_DIR/handoffs/*.md(N.m+14)
 sys=$(mktemp)
 cat "$MEM/MEMORY.md" "$CRMMEM/feedback_kent_beck_style.md" "$CRMMEM/feedback_no_claude_footer_on_issue_comments.md" > "$sys" 2>/dev/null
 cd "$wt"
@@ -147,9 +152,13 @@ $findings
 Once the review is posted, write the handoff to $HANDOFF, replacing what is there. It is private notes for whoever reviews this PR next, never posted. Start it with a "## TL;DR" section for $login, who reads it on a board without opening the PR: three lines in plain words, no paths or shas: "- What: <what the PR does, one sentence>", "- Found: <the one or two points that matter, or that nothing blocks; the board already shows the verdict>", "- Next: <what $login should do now: nothing, wait for the author to fix point N, check the author's reply on X, approve once Y lands>". Then the full sha you reviewed and the depth (${DEPTH:-full}); the AC table with verdicts; every point you raised, inline or in the body, with path:line, the fix you expect, and whether it blocks; what you checked and found fine; what you chose not to flag and why; open questions. Writing the handoff is your last step: this session closes automatically shortly after.
 EOF
 )
-# My own PR (Skim / Deep from the panel's Mine profile): the same checks as a self-check, printed here instead of posted.
-[[ $(gh pr view $n -R $REPO --json author --jq .author.login 2>/dev/null) == $login ]] &&
-  prompt+=$'\n\nThis is my own PR. Do not post a GitHub review or any comment. Run the same checks and print the findings here in the terminal, ordered by severity, with file:line, then stop.'
+# My own PR (Skim / Deep from the panel's Mine profile): the same checks as a self-check, written to a fix list instead of posted.
+[[ -n $mine ]] && prompt+=$(cat <<EOF
+
+
+This is my own PR: ignore the posting and handoff steps above. Post no GitHub review and no comment. Run the same checks and write the findings to $HANDOFF, replacing what is there, as a fix list for another Claude session that will fix them on this branch. Start it with the "## TL;DR" section described above; then the full sha you reviewed and the depth; the AC table; then "## Fixes": numbered, most important first, each with path:line, the problem, the fix you expect (code when a snippet makes it shorter) and whether it blocks; then anything you checked and found fine. Writing it is your last step: print its path and stop, this session closes automatically shortly after.
+EOF
+)
 claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
 rc=$?
 kill $watcher 2>/dev/null

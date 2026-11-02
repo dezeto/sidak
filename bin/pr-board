@@ -49,6 +49,8 @@ PY
 }
 
 board() {
+  # Self-check fix lists (claude-review on my own PR) last a week.
+  rm -f -- $SIDAK_DIR/reviews/*.md(N.mh+168)
   local s=$(<$STATE) moved=$(updated)
   # The panel's stale cut-off (settings.json staleDays, default 30, 0 = off) keeps the menu bar count in step with its Inbox.
   local days=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("staleDays", 30)))' $SETTINGS 2>/dev/null || print 30)

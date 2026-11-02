@@ -3,6 +3,7 @@ token.txt
 state.json
 settings.json
 handoffs/
+reviews/
 .DS_Store
 *.bak
 config.json

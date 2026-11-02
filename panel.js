@@ -404,7 +404,21 @@ function prRow(pr) {
       tag.dataset.group = group;
       row.querySelector('.title').replaceChildren(el('span', { className: 'name', textContent: pr.title }), tag);
     }
-    row.querySelector('.state').textContent = '';
+    // After a self-check the status word copies its fix list's path, to hand to Claude (Fix reads it by itself).
+    const state = row.querySelector('.state');
+    state.textContent = '';
+    if (pr.report) {
+      const copy = el('button', { type: 'button', className: 'state', textContent: 'Copy fix list', title: pr.report });
+      copy.dataset.live = '';
+      copy.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        copyText(pr.report);
+        copy.textContent = 'Copied';
+        setTimeout(() => (copy.textContent = 'Copy fix list'), 1500);
+      };
+      state.replaceWith(copy);
+    }
     info.replaceChildren(...words(`${pr.repo} #${pr.number}`, ...reason.split(' · ')));
     const [label, tip, key] = AUTHOR_ACTIONS[action] ?? [];
     if (label) {
@@ -534,6 +548,7 @@ function board(sections, state) {
     pr.auto = entry?.auto ?? false;
     pr.verdict = entry?.verdict ?? null;
     pr.tldr = entry?.tldr ?? null;
+    pr.report = entry?.report ?? null;
     pr.followUp = followUp(pr, entry);
   }
   // The VIP field suggests everyone on these PRs, authors and reviewers, who is not a VIP yet.
@@ -553,7 +568,8 @@ function board(sections, state) {
     ...nextStep(inbox.filter((pr) => !stale(pr)), (by.Mine ?? []).filter((pr) => !stale(pr))),
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
-    column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp)),
+    // My own PRs stay in Mine, a self-check or not.
+    column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp && pr.author)),
     ...mine,
   );
   return wrap;
