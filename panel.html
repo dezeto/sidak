@@ -201,7 +201,7 @@
   /* Always there under the status bar, like the Claude app's top: the list darkens and blurs as it runs under the clock; scrolled past
      the large title it grows to hold the small one. */
   :root[data-remote][data-compact] .ios-nav { height: calc(env(safe-area-inset-top, 0px) + 44px); border-bottom: 0.5px solid var(--group-line); pointer-events: auto; }
-  :root[data-remote]:not([data-compact]) .ios-nav::before { visibility: hidden; }
+  :root[data-remote]:not([data-compact]) .ios-nav > * { visibility: hidden; }
   /* At the very top nothing is under the clock, so no strip; once the list scrolls under it, a strip that fades out at its foot (no
      hard edge) until the small title takes over. */
   :root[data-remote]:not([data-scrolled]) .ios-nav::after { visibility: hidden; }
@@ -212,10 +212,16 @@
     content: ''; position: absolute; inset: 0; z-index: -1; background: var(--top-tint);
     -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
   }
-  :root[data-remote] .ios-nav::before { content: attr(data-title); }
-  :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav::before { content: 'Results'; }
+  .ios-nav .nav-title { padding: 0 8px; border: 0; background: none; color: inherit; font: inherit; }
+  .ios-nav .nav-title::before { content: attr(data-title); }
+  :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav .nav-title::before { content: 'Results'; }
+  .ios-nav .nav-chip {
+    position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px;
+    background: rgba(127, 127, 127, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); color: var(--lg-ink); font: inherit; font-size: 13px; font-weight: 600;
+  }
+  .ios-nav .nav-chip:active { transform: scale(0.95); }
   :root[data-remote][data-settings] .ios-nav { height: env(safe-area-inset-top, 0px); border-bottom: 0; }
-  :root[data-remote][data-settings] .ios-nav::before { visibility: hidden; }
+  :root[data-remote][data-settings] .ios-nav > * { visibility: hidden; }
   :root[data-remote] { --top-tint: rgba(242, 242, 247, 0.8); }
   @media (prefers-color-scheme: dark) { :root[data-remote] { --top-tint: rgba(24, 24, 26, 0.84); } }
   /* An empty list: a quiet card with a check, not bare text. */

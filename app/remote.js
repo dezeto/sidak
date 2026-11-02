@@ -76,11 +76,23 @@
     }, { passive: true });
     // Scrolled past the large title, a small one stays in a blurred bar at the top, as in iOS apps; a tap there scrolls back up.
     const foot = document.getElementById('foot');
-    const nav = Object.assign(document.createElement('button'), { type: 'button', className: 'ios-nav', onclick: () => scrollTo({ top: 0, behavior: 'smooth' }) });
+    // Its right end keeps the settings chip (profile · model · effort, as the footer's), a tap opening the settings.
+    const nav = Object.assign(document.createElement('div'), { className: 'ios-nav' });
+    const navTitle = Object.assign(document.createElement('button'), { type: 'button', className: 'nav-title', onclick: () => scrollTo({ top: 0, behavior: 'smooth' }) });
+    const chip = Object.assign(document.createElement('button'), { type: 'button', className: 'nav-chip', onclick: () => document.querySelector('#foot .run')?.click() });
+    nav.append(navTitle, chip);
     document.body.append(nav);
-    const title = () => { nav.dataset.title = foot.dataset.title ?? ''; };
+    const title = () => { navTitle.dataset.title = foot.dataset.title ?? ''; };
     new MutationObserver(title).observe(foot, { attributes: true, attributeFilter: ['data-title'] });
     title();
+    const chipText = () => {
+      const run = document.querySelector('#foot .run');
+      // Short, so it never crowds the title: the model by its initial (O, S), as the Mac's footer once did.
+      chip.textContent = (run?.textContent ?? '').replace(/\bOpus\b/, 'O').replace(/\bSonnet\b/, 'S');
+      chip.ariaLabel = run ? `${run.textContent}: settings` : 'Settings';
+    };
+    new MutationObserver(chipText).observe(document.getElementById('foot-config'), { childList: true, subtree: true, characterData: true });
+    chipText();
     addEventListener('scroll', () => document.documentElement.toggleAttribute('data-compact', scrollY > 56), { passive: true });
     // iOS Settings: a title with Done, then the rows in labelled groups on rounded cards. The rows move, not copies, so panel.js keeps
     // its handles on them.
