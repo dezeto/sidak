@@ -132,7 +132,7 @@ start() {
 }
 
 # While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
-# model and effort: VIPs first, then the oldest request; at most 10 auto runs a day. A PR with a state.json entry is never started
+# model and effort: VIPs first, then the oldest request; at most settings.json autoCap auto runs a day (0, the default: no limit). A PR with a state.json entry is never started
 # again, unless it is a manual run that failed, or a follow-up (updated): one I reviewed whose author pushed or re-requested me since,
 # re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
 auto() {
@@ -145,8 +145,9 @@ if subprocess.run(["pgrep", "-x", "cmux"], capture_output=True).returncode: sys.
 state = json.load(open(state_path))
 now = time.time()
 midnight = datetime.datetime.combine(datetime.date.today(), datetime.time()).timestamp()
-left = 10 - sum(e.get("auto", False) and e.get("run", 0) >= midnight for e in state.values())
-if left <= 0: sys.exit(print("auto on (cap)"))
+cap = int(settings.get("autoCap", 0))
+left = cap - sum(e.get("auto", False) and e.get("run", 0) >= midnight for e in state.values()) if cap else None
+if left is not None and left <= 0: sys.exit(print("auto on (cap)"))
 # The Inbox's rules: reviewable from config.json, stale and VIP like pr.js (a VIP is never stale). VIP by login only: the search has no commit email.
 reviewable = config["reviewable"]
 vip = {entry.lower() for entry in settings.get("vip", [])}

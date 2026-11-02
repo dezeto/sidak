@@ -24,7 +24,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`
   (deleted after a week). The card's **Copy fix list** copies its path to hand to Claude, and Fix reads it by itself.
 - **Token use** in the footer: what today's reviews used (hover for cache reads), each card's run in its icon's tooltip, and
-  `Auto 3/10` for auto review's daily budget.
+  `Auto 3/10` when Auto per day sets a daily limit (plain `Auto` without one).
 - **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (To do with your drafts folded under it, Waiting, Ready) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
@@ -34,7 +34,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it
-  has been quiet for an hour; at most ten a day.
+  has been quiet for an hour; no daily limit unless Auto per day sets one.
 - **Stale** PRs folded away, **VIP** authors pinned, **snooze** a card for a day, right-click for Open in Zed, Copy
   branch, Files changed, Checks, Copy link.
 - Reviews stay silent for everyone else: no labels, no comments beyond the review itself.

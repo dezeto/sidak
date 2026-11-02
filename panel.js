@@ -130,7 +130,7 @@ async function loadConfig() {
 // pollMinutes: how often Sidak.app's timer syncs. phone: false stops Sidak.app's tunnel (config.json remote); unset means on.
 // Read like reviewState(), written through the opener (ccset://); localStorage caches it so the header renders before the fetch.
 // No profile picked yet: config.defaultProfile.
-const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, pollMinutes: 2 };
+const DEFAULT_SETTINGS = { staleDays: 30, vip: [], auto: { on: false }, snooze: {}, pollMinutes: 2, autoCap: 0 };
 let settings = { ...DEFAULT_SETTINGS, ...saved('settings', {}) };
 // While a write is in flight the file is older than the page, so renders keep the page's copy.
 let settingsWrites = 0;
@@ -166,6 +166,7 @@ function toggleSnooze(key) {
 // Refresh every, Hide after (the stale cut-off) and the VIP list sit in the settings card under model and effort.
 const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]');
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
+const capSeg = document.querySelector('#settings [data-setting="autoCap"]');
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
 const vipPeople = document.getElementById('vip-people');
@@ -180,9 +181,8 @@ const phoneOn = () => Boolean(config.remote?.team) && settings.phone !== false;
 // profile always (its account pays), Auto only while auto review is on. Set-once settings (sync interval, stale cut-off) stay in the card.
 // The sync status (#status, the last sync's time beside the refresh button) follows it. Every render refreshes it, and settings, picks and syncs all end in one.
 const footConfig = document.getElementById('foot-config');
-// Today's reviews from state.json (render): their tokens for the footer, and auto's runs against pr-board auto's cap of 10 a day.
+// Today's reviews from state.json (render): their tokens for the footer, and auto's runs against settings.json autoCap (0: no limit).
 // ponytail: state.json keeps one run per PR, so a PR reviewed twice today counts once; a usage log if that ever matters.
-const AUTO_CAP = 10;
 let today = { tokens: 0, cached: 0, auto: 0 };
 const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumSignificantDigits: 3 });
 function countToday(state) {
@@ -203,7 +203,9 @@ function renderFoot() {
     profile && pick(profile, 'Claude profile for new reviews'),
     pick(label('model'), 'Model for new reviews'),
     pick(label('effort'), 'Effort for new reviews'),
-    settings.auto?.on && pick(`Auto ${today.auto}/${AUTO_CAP}`, `Auto review is on, ${today.auto} of its ${AUTO_CAP} runs today used`),
+    settings.auto?.on && (settings.autoCap
+      ? pick(`Auto ${today.auto}/${settings.autoCap}`, `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`)
+      : pick('Auto', `Auto review is on, no daily limit (${today.auto} today)`)),
     today.tokens && el('span', {
       className: 'used',
       textContent: `${compact.format(today.tokens)} tokens`,
@@ -214,6 +216,7 @@ function renderFoot() {
 function showSettings() {
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
+  for (const button of capSeg.children) button.setAttribute('aria-pressed', Number(button.value) === (settings.autoCap ?? 0));
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
   phoneSeg.parentElement.hidden = !config.remote?.team;
@@ -228,6 +231,7 @@ function showSettings() {
 }
 pollSeg.onclick = ({ target }) => target.value && saveSettings({ pollMinutes: Number(target.value) });
 staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Number(target.value) });
+capSeg.onclick = ({ target }) => target.value && saveSettings({ autoCap: Number(target.value) });
 // Turning it on writes the picks as well, so the runs use the model and effort shown here.
 autoSeg.onclick = ({ target }) => target.value && saveSettings({ auto: { ...settings.auto, on: target.value === 'on' }, ...picks });
 profileSeg.onclick = ({ target }) => target.value && saveSettings({ profile: target.value });
