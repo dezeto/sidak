@@ -216,9 +216,11 @@
   .ios-nav .nav-title::before { content: attr(data-title); }
   :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav .nav-title::before { content: 'Results'; }
   .ios-nav .nav-chip {
-    position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px;
-    background: rgba(127, 127, 127, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12); color: var(--lg-ink); font: inherit; font-size: 13px; font-weight: 600;
+    position: absolute; right: max(14px, env(safe-area-inset-right, 0px)); bottom: 5px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0;
+    border: 0; border-radius: 50%; background: rgba(127, 127, 127, 0.2); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 0 0 0.5px rgba(255, 255, 255, 0.08);
+    color: var(--lg-ink);
   }
+  .ios-nav .nav-chip svg { width: 18px; height: 18px; }
   .ios-nav .nav-chip:active { transform: scale(0.95); }
   :root[data-remote][data-settings] .ios-nav { height: env(safe-area-inset-top, 0px); border-bottom: 0; }
   :root[data-remote][data-settings] .ios-nav > * { visibility: hidden; }

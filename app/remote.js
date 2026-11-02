@@ -76,10 +76,12 @@
     }, { passive: true });
     // Scrolled past the large title, a small one stays in a blurred bar at the top, as in iOS apps; a tap there scrolls back up.
     const foot = document.getElementById('foot');
-    // Its right end keeps the settings chip (profile · model · effort, as the footer's), a tap opening the settings.
+    // Its right end keeps a settings button, a tap opening the settings.
     const nav = Object.assign(document.createElement('div'), { className: 'ios-nav' });
     const navTitle = Object.assign(document.createElement('button'), { type: 'button', className: 'nav-title', onclick: () => scrollTo({ top: 0, behavior: 'smooth' }) });
     const chip = Object.assign(document.createElement('button'), { type: 'button', className: 'nav-chip', onclick: () => document.querySelector('#foot .run')?.click() });
+    // A round glass button with the settings glyph; what it holds (profile · model · effort) is its label for VoiceOver.
+    chip.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>';
     nav.append(navTitle, chip);
     document.body.append(nav);
     const title = () => { navTitle.dataset.title = foot.dataset.title ?? ''; };
@@ -87,8 +89,6 @@
     title();
     const chipText = () => {
       const run = document.querySelector('#foot .run');
-      // Short, so it never crowds the title: the model by its initial (O, S), as the Mac's footer once did.
-      chip.textContent = (run?.textContent ?? '').replace(/\bOpus\b/, 'O').replace(/\bSonnet\b/, 'S');
       chip.ariaLabel = run ? `${run.textContent}: settings` : 'Settings';
     };
     new MutationObserver(chipText).observe(document.getElementById('foot-config'), { childList: true, subtree: true, characterData: true });
