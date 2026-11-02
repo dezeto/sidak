@@ -11,7 +11,7 @@ try:
     env = dict(os.environ, CMUX_QUIET="1", CMUX_SOCKET_PASSWORD=open(os.path.expanduser("~/.config/cmux/socket-password")).read().strip())
     subprocess.run([os.path.join(SIDAK_DIR, "bin", "claude-review-open"), msg["url"]], check=True, capture_output=True, text=True, timeout=20, env=env)
     # Settings, nudges, mark-ready and Zed run in place: bringing cmux forward would close the Arc popup.
-    if not msg["url"].startswith(("ccset:", "ccnudge:", "ccready:", "ccopen:")):
+    if not msg["url"].startswith(("ccset:", "ccnudge:", "ccready:", "ccopen:", "ccapprove:", "ccask:")):
         subprocess.run(["osascript", "-e", 'tell application "cmux" to activate'], capture_output=True, timeout=10)
     out = {"ok": True}
 except Exception as e:  # ponytail: one error string back to the panel, no codes

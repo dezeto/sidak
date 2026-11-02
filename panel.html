@@ -98,7 +98,9 @@
   :root[data-remote] #used::after { content: none; }
   :root[data-remote][data-settings] #foot::before { filter: blur(8px); opacity: 0.5; }
   :root[data-remote] #foot .sign { order: 5; min-height: 18px; margin: 0; }
-  :root[data-remote] #refresh { order: 6; width: 32px; height: 32px; margin: -7px -8px -7px auto; }
+  :root[data-remote] #week { order: 6; width: 32px; height: 32px; margin: -7px 0 -7px auto; }
+  :root[data-remote] #week .icon, :root[data-remote] #refresh .icon { width: 17px; height: 17px; }
+  :root[data-remote] #refresh { order: 7; width: 32px; height: 32px; margin: -7px -8px -7px 0; }
   /* Groups, like iOS Settings: each section's rows on one rounded card, hairlines between them; section labels as titles. */
   :root[data-remote] { --group: #fff; --group-line: rgba(60, 60, 67, 0.18); }
   @media (prefers-color-scheme: dark) { :root[data-remote] { --group: #1c1c1e; --group-line: rgba(84, 84, 88, 0.6); } }
@@ -243,6 +245,25 @@
   :root[data-remote] #tabs button { flex: 1 1 auto; }
   :root[data-remote] #tabs::before { left: 0; width: var(--w, 0); transform: translateX(var(--x, 0)); }
   @media (prefers-reduced-motion: no-preference) { :root[data-remote] #tabs[data-glide='move']::before { transition: transform var(--lg-duration-normal) var(--lg-easing-spring), width var(--lg-duration-normal) var(--lg-easing-spring); } }
+  /* The sheet's answer (claude-ask) and review timeline (claude-review's history). */
+  .sheet-answer { margin-top: 12px; padding: 12px 14px; border-radius: 16px; background: color-mix(in srgb, var(--lg-accent) 12%, transparent); font-size: 13px; line-height: 18px; }
+  .sheet-answer p { margin: 0; white-space: pre-line; }
+  .sheet-answer .sheet-q { margin-bottom: 6px; font-weight: 600; }
+  .sheet-answer .sheet-at { margin-top: 6px; color: var(--lg-ink-muted); font-size: 12px; }
+  .sheet-history { margin: 12px 0 0; padding: 0 0 0 16px; border-left: 2px solid var(--lg-border-subtle); list-style: none; font-size: 13px; line-height: 20px; color: var(--lg-ink-muted); }
+  .sheet-history li { position: relative; }
+  .sheet-history li::before { content: ''; position: absolute; left: -21px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--lg-ink-muted); }
+  .sheet-history li.now { color: var(--amber); font-weight: 600; }
+  .sheet-history li.now::before { background: var(--amber); }
+  /* Reviewer load over Mine's Waiting: who my PRs wait on, most first. */
+  .load { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 2px 20px 8px; font-size: 12px; color: var(--lg-ink-muted); }
+  .load-label { font-weight: 600; }
+  .load-who { display: inline-flex; align-items: center; gap: 5px; color: var(--lg-ink); }
+  .load-who img { width: 16px; height: 16px; border-radius: 50%; }
+  :root[data-remote] .load { margin: 16px 20px 0; font-size: 14px; }
+  :root[data-remote] .load-who img { width: 20px; height: 20px; }
+  .badge-on { margin-left: auto; white-space: nowrap; padding: 6px 2px; border: 0; background: none; color: var(--lg-accent); font: inherit; font-size: 16px; }
+  .badge-on:disabled { color: var(--lg-ink-muted); }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
   :root[data-remote] #toast {
     top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;
@@ -278,7 +299,7 @@
   .sheet-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 16px; }
   #sheet .review { justify-content: center; height: 46px; border-radius: 23px; font-size: 15px; background: var(--lg-bg-interactive); }
   #sheet .review kbd { display: none; }
-  #sheet .review:is(.merge, .fix), #sheet .sheet-buttons:not(:has(.merge, .fix)) > .review[data-depth='full'] {
+  #sheet .review:is(.merge, .fix, .approve), #sheet .sheet-buttons:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] {
     background: color-mix(in srgb, var(--lg-accent) 82%, #000); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
   }
   #sheet .open { display: flex; align-items: center; justify-content: center; height: 46px; margin-top: 16px; border-radius: 23px; background: var(--lg-bg-interactive); color: var(--lg-ink); font-size: 15px; font-weight: 600; text-decoration: none; }
@@ -359,7 +380,7 @@
     -webkit-backdrop-filter: blur(40px) saturate(190%); backdrop-filter: blur(40px) saturate(190%);
   }
   :root[data-remote] :is(#sheet .review, #sheet .open, .sheet-more :is(a, button), #foot .run, #settings .seg) { background: var(--glass-button); box-shadow: var(--glass-rim); }
-  :root[data-remote] #sheet .review:is(.merge, .fix), :root[data-remote] #sheet .sheet-buttons:not(:has(.merge, .fix)) > .review[data-depth='full'] {
+  :root[data-remote] #sheet .review:is(.merge, .fix, .approve), :root[data-remote] #sheet .sheet-buttons:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] {
     background: color-mix(in srgb, var(--lg-accent) 86%, #000); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 18px color-mix(in srgb, var(--lg-accent) 35%, transparent);
   }
   @media (prefers-contrast: more), (prefers-reduced-transparency: reduce) {
@@ -669,12 +690,12 @@
      a shade deeper so its white label keeps 4.5:1. */
   .review { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 12px; font-weight: 600; color: var(--lg-ink); white-space: nowrap; }
   .review kbd { margin-left: 7px; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--lg-ink) 10%, transparent); font: 600 10px/14px -apple-system, system-ui, sans-serif; color: var(--lg-ink-muted); }
-  .review:is(.merge, .fix), .actions:not(:has(.merge, .fix)) > .review[data-depth='full'] {
+  .review:is(.merge, .fix, .approve), .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] {
     border-color: transparent; background: color-mix(in srgb, var(--lg-accent) 82%, #000); color: #fff;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px color-mix(in srgb, var(--lg-accent) 35%, transparent);
   }
-  .review:is(.merge, .fix):hover, .actions:not(:has(.merge, .fix)) > .review[data-depth='full']:hover { background: color-mix(in srgb, var(--lg-accent) 72%, #000); }
-  .review:is(.merge, .fix) kbd, .actions:not(:has(.merge, .fix)) > .review[data-depth='full'] kbd { background: rgba(0, 0, 0, 0.25); color: rgba(255, 255, 255, 0.9); }
+  .review:is(.merge, .fix, .approve):hover, .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full']:hover { background: color-mix(in srgb, var(--lg-accent) 72%, #000); }
+  .review:is(.merge, .fix, .approve) kbd, .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] kbd { background: rgba(0, 0, 0, 0.25); color: rgba(255, 255, 255, 0.9); }
   .review:disabled { opacity: 0.5; cursor: default; }
 
   [data-state='APPROVED'], [data-state='SUCCESS'] { --state: var(--green); }
@@ -702,6 +723,17 @@
   #status[data-error='true'] { color: var(--red); }
   #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
   #refresh .icon { width: 13px; height: 13px; }
+  #week { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -2px -7px 0; border-radius: 14px; color: inherit; }
+  #week .icon { width: 13px; height: 13px; }
+  #week:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
+  /* This week (panel.js openWeek), in the sheet: four tiles, then the Inbox PRs waiting longest. */
+  .week-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+  .week-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: rgba(127, 127, 127, 0.12); }
+  .week-tile b { font-size: 24px; font-weight: 700; line-height: 28px; font-variant-numeric: tabular-nums; }
+  .week-tile span { font-size: 13px; font-weight: 600; }
+  .week-tile small { font-size: 12px; color: var(--lg-ink-muted); }
+  .week-label { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--lg-ink-muted); }
+  .week-waiting { margin-top: 0; }
 
   /* Motion: Liquid Glass springs that answer the user's own actions and never idle, all under no-preference. panel.js play() checks
      the same query for the scripted parts: the settings fold, the list fade on a tab switch, rows a sync brings in, the profile flip,
@@ -806,6 +838,9 @@
   <symbol id="i-phone" viewBox="0 0 16 16">
     <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M5.25 1.75h5.5a1 1 0 0 1 1 1v10.5a1 1 0 0 1-1 1h-5.5a1 1 0 0 1-1-1V2.75a1 1 0 0 1 1-1zM7.25 12h1.5" />
   </symbol>
+  <symbol id="i-week" viewBox="0 0 16 16">
+    <path fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" d="M3.5 3h9A1.5 1.5 0 0 1 14 4.5v8a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 12.5v-8A1.5 1.5 0 0 1 3.5 3zM2 6.5h12M5.25 1.75v2.5M10.75 1.75v2.5M5 9.5h1.5M9.5 9.5H11M5 11.75h1.5" />
+  </symbol>
   <symbol id="i-refresh" viewBox="0 0 16 16">
     <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M13.25 8A5.25 5.25 0 1 1 11.7 4.3M12.25 1.75v2.9h-2.9" />
   </symbol>
@@ -881,7 +916,7 @@
     <div class="chips"><span id="vip-list"></span><input id="vip" name="vip" type="text" spellcheck="false" autocomplete="off" list="vip-people" placeholder="login or email…" /><datalist id="vip-people"></datalist></div>
   </div>
 </section></div>
-<span id="foot-config"></span><span id="used" hidden></span><span id="status" aria-live="polite"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
+<span id="foot-config"></span><span id="used" hidden></span><span id="status" aria-live="polite"></span><button id="week" type="button" title="This week" aria-label="This week's reviews"><svg class="icon" aria-hidden="true"><use href="#i-week" /></svg></button><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
 <dialog id="sheet" aria-label="Pull request"></dialog>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>
@@ -889,6 +924,7 @@
   <a data-do="files" target="_blank">Files Changed</a>
   <a data-do="checks" target="_blank">Checks</a>
   <button type="button" data-do="link">Copy Link</button>
+  <button type="button" data-do="ask">Ask Claude…</button>
   <hr />
   <button type="button" data-do="ignore">Ignore</button>
 </div>

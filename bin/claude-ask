@@ -1,0 +1,61 @@
+#!/bin/zsh
+# Answers one question about Claude's review of a PR, in a visible cmux tab (claude-review-open's ccask), so you watch it think.
+#   claude-ask <repo> <pr> <question>      PROFILE=cc ... for a config.json profile instead of defaultProfile
+# Claude reads its own handoff (or fix list), its posted review and the PR, writes a short answer to answers/<repo>-<n>.md and stops;
+# the answer then goes into state.json ("answer": {q, text, at}), where the board's card sheet shows it. Nothing is posted to GitHub.
+set -u
+# The whole script in one block, read before any of it runs: an edit while it is open cannot shift what is left to read.
+{
+SIDAK_DIR=${SIDAK_DIR:-${0:A:h:h}}
+cfg() { jq -r "$@" $SIDAK_DIR/config.json; }
+login=$(cfg .login) repos=$(cfg .repos); repos=${repos/#\~/$HOME}
+repo=${1#*/} n=$2 q=$3
+REPO=$(cfg .org)/$repo
+PROFILE=${PROFILE:-$(cfg .defaultProfile)}
+profile_dir=$(cfg --arg p $PROFILE '.profiles[$p] // ""')
+[[ -n $profile_dir ]] && export CLAUDE_CONFIG_DIR=${profile_dir/#\~/$HOME}
+notes=$SIDAK_DIR/handoffs/$repo-$n.md
+[[ -f $notes ]] || notes=$SIDAK_DIR/reviews/$repo-$n.md
+ANSWER=$SIDAK_DIR/answers/$repo-$n.md
+mkdir -p ${ANSWER:h}
+started=$(date +%s)
+
+# The answer into state.json, beside the review it is about (a new review's mark drops it: it would be about an older head).
+store() { [[ -f $ANSWER && $(stat -f %m "$ANSWER") -gt $started ]] || return 1
+  python3 - $SIDAK_DIR/state.json "$REPO#$n" "$q" "$ANSWER" <<'PY'
+import json, os, sys, time
+path, key, q, answer = sys.argv[1:]
+data = json.load(open(path)) if os.path.exists(path) else {}
+data.setdefault(key, {})["answer"] = {"q": q, "text": open(answer).read().strip()[:2000], "at": int(time.time() * 1000)}
+open(path + ".tmp", "w").write(json.dumps(data)); os.replace(path + ".tmp", path)
+PY
+}
+close_tab() {
+  local cmux=/Applications/cmux.app/Contents/Resources/bin/cmux ref
+  export CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password)
+  ref=$($cmux workspace list 2>/dev/null | grep -E "ask $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
+  [[ -n $ref ]] && $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1
+}
+# The session stays open after it writes the answer, so a watcher stores it and closes the tab.
+( while sleep 5; do store && { sleep 3; close_tab; break; }; done ) &
+watcher=$!
+trap 'kill $watcher 2>/dev/null; store; exit 129' HUP TERM
+
+echo "== ask $repo#$n (PROFILE=$PROFILE): $q =="
+claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-medium} "$(cat <<EOF
+You reviewed https://github.com/$REPO/pull/$n earlier for $login. $login asks about that review:
+
+$q
+
+Answer from what you already have: your private notes at $notes (if it exists), your posted review and its inline comments on the PR
+(gh api repos/$REPO/pulls/$n/reviews and .../comments, the ones by $login), and the PR itself (gh pr diff $n -R $REPO, gh pr view).
+Read code only where the question needs it. Change no file, post nothing to GitHub, start no review.
+
+Write the answer to $ANSWER, replacing what is there: plain words for a phone screen, at most eight short lines, no tables, path:line
+only when it helps. Writing it is your last step: this session closes automatically shortly after.
+EOF
+)"
+kill $watcher 2>/dev/null
+store
+echo; echo "ask $repo#$n finished"; exec zsh
+}; exit

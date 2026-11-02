@@ -118,6 +118,28 @@
       group.append(Object.assign(document.createElement('p'), { className: 'ios-label', textContent: label }), cells);
       settings.append(group);
     }
+    // Home Screen badge (iOS 16.4+, the board added to the Home Screen with notifications allowed): its icon shows the Inbox count,
+    // as Mail's shows unread mail. iOS asks for the permission only from a tap, so a row in Board turns it on.
+    if ('setAppBadge' in navigator) {
+      const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+      const row = Object.assign(document.createElement('div'), { className: 'set' });
+      const button = Object.assign(document.createElement('button'), { type: 'button', className: 'badge-on' });
+      const badge = () => {
+        const n = Number(document.querySelector('#tabs button[value="Inbox"][data-group="inbox"] .n')?.textContent) || 0;
+        (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+      };
+      const show = () => {
+        const allowed = window.Notification?.permission;
+        button.textContent = !standalone ? 'Home Screen app only' : allowed === 'granted' ? 'On' : allowed === 'denied' ? 'Off in Settings' : 'Turn on';
+        button.disabled = !standalone || allowed !== 'default';
+      };
+      button.onclick = () => Notification.requestPermission().then(() => { show(); badge(); });
+      row.append(Object.assign(document.createElement('span'), { className: 'l', textContent: 'Home Screen badge' }), button);
+      settings.querySelectorAll('.ios-cells')[2]?.append(row);
+      show();
+      new MutationObserver(badge).observe(document.getElementById('tabs'), { childList: true, subtree: true, characterData: true });
+      badge();
+    }
   });
   const changed = new Set();
   // The Mac's lists, refetched every minute and when the phone comes back to the tab; the page's own keys (view, tab, snooze picks)

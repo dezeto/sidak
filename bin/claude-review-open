@@ -3,6 +3,7 @@
 # Takes ccreview://<owner>/<repo>/<pr>[/<model>[/<effort>[/<depth>]]], ccreview://<pr>[...] (the first reviewable repo in config.json), or a bare number.
 # Also ccfix://<owner>/<repo>/<pr>/<model>/<effort> (claude-fix on my own PR's branch) and ccmerge://<owner>/<repo>/<pr> (squash-merge),
 # ccnudge://<owner>/<repo>/<pr> (re-request every pending reviewer), ccready://<owner>/<repo>/<pr> (leave draft),
+# ccapprove://<owner>/<repo>/<pr> (approve as me), ccask://<owner>/<repo>/<pr>/<url-encoded question> (claude-ask),
 # ccopen://<owner>/<repo>/<pr> (Zed on the review worktree, else the checkout) and ccset://<url-encoded JSON> (the panel's settings.json, replaced atomically).
 # A new review runs on the Claude profile in settings.json (claude-review PROFILE) when config.json has it, else defaultProfile.
 # FOCUS=false starts the review workspace without switching to it; AUTO=1 (pr-board auto) marks the run "auto" in state.json.
@@ -36,6 +37,19 @@ if [[ $scheme == ccnudge ]]; then
   exec print "nudged ${pending//,/, }"
 fi
 if [[ $scheme == ccready ]]; then exec gh pr ready "$n" -R "$org/$repo"; fi
+# Approve: my approval, posted as me, only ever from a tap (the board asks first).
+if [[ $scheme == ccapprove ]]; then gh pr review "$n" -R "$org/$repo" --approve >/dev/null && exec print "approved $repo#$n"; exit 1; fi
+# Ask: a question about Claude's review of this PR, answered in a visible cmux tab (claude-ask); the answer lands in state.json.
+if [[ $scheme == ccask ]]; then
+  q=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))' "$parts[4]")
+  [[ -n $q ]] || { print "no question" >&2; exit 1; }
+  profile=$(jq -r '.profile // ""' $SIDAK_DIR/settings.json 2>/dev/null)
+  [[ $(cfg --arg p "$profile" '.profiles | has($p)') == true ]] || profile=$(cfg .defaultProfile)
+  ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "ask $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
+  [[ -n $ref ]] && $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1
+  exec $cmux new-workspace --focus ${FOCUS:-false} --name "ask $repo#$n" --cwd "$repos/$repo" \
+    --command "PROFILE=$profile ${(q)SIDAK_DIR}/bin/claude-ask $repo $n ${(q)q}"
+fi
 if [[ $scheme == ccopen ]]; then
   dir=$repos/$repo
   [[ -d $dir/.claude/worktrees/review-$n ]] && dir+=/.claude/worktrees/review-$n

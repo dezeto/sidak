@@ -449,15 +449,20 @@ function prRow(pr) {
     }
     // Nudge re-requests every pending reviewer and Mark ready leaves draft: one gh call each in the opener, then a sync shows it.
     if (depth === 'nudge' || depth === 'ready') url = `cc${depth}://${repoOf(pr)}/${pr.number}`;
+    // Approve posts my approval: always asked first, as Merge is.
+    if (depth === 'approve') {
+      if (!confirm(`Approve ${pr.repo} #${pr.number} as you?\n${pr.title}`)) return;
+      url = `ccapprove://${repoOf(pr)}/${pr.number}`;
+    }
     // The native messaging host (bin/) runs the opener directly; Arc's external-URL launch was unreliable.
     chrome.runtime.sendNativeMessage('com.sidak.host', { url }, (reply) => {
       const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
       // Merge, Nudge and Mark ready are gh calls: only a run in cmux needs cmux.
-      const gh = { merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth];
+      const gh = { merge: 'merge', nudge: 'nudge', ready: 'mark it ready', approve: 'approve' }[depth];
       if (error) alert(`Could not ${gh ?? 'start it'}:\n${error}${gh ? '' : '\nIs cmux running? Then try again.'}`);
       else if (gh) {
         // Say it worked on the button itself for a moment: the sync that follows changes nothing visible for a nudge.
-        const done = { merge: 'Merging', nudge: 'Nudged', ready: 'Ready' }[depth];
+        const done = { merge: 'Merging', nudge: 'Nudged', ready: 'Ready', approve: 'Approved' }[depth];
         if (button?.firstChild?.nodeType === Node.TEXT_NODE) {
           const label = button.firstChild.data;
           button.firstChild.data = done;
@@ -533,6 +538,13 @@ function prRow(pr) {
       }
       actions.prepend(button);
     }
+  }
+  // Claude reviewed it and left only comments, nothing blocking: Approve is the next step, mine to take (Claude approves by itself
+  // when it has nothing to say). Not once the PR moved since (a follow-up): that wants a look first.
+  if (!pr.mine && pr.claude === 'reviewed' && pr.verdict === 'commented' && !pr.followUp) {
+    const button = el('button', { className: 'review approve', type: 'button', textContent: 'Approve', title: 'Approve as you: Claude found nothing blocking' });
+    button.dataset.depth = 'approve';
+    actions.prepend(button);
   }
   if (!config.reviewable.includes(repoOf(pr).split('/')[1]) || pr.claude === 'running') actions.remove();
   // How many buttons the card shows, for panel.html: WebKit misses :hover inside :has() on some rows, so no :has(.actions) there.
@@ -668,6 +680,9 @@ function board(sections, state) {
     // The head a self-check last read (claude-review's sha): newer commits on my PR wait for Auto's next one before a Nudge.
     pr.checkedSha = entry?.report ? entry.sha ?? null : null;
     pr.tokens = entry?.tokens ?? null;
+    // claude-ask's answer to my question about this review, and the review runs so far (claude-review's history), for the sheet.
+    pr.answer = entry?.answer ?? null;
+    pr.history = entry?.history ?? [];
     pr.followUp = followUp(pr, entry);
   }
   // The VIP field suggests everyone on these PRs, authors and reviewers, who is not a VIP yet.
@@ -684,7 +699,7 @@ function board(sections, state) {
   const wrap = el('div', { className: 'board' });
   const mine = mineColumns(by.Mine ?? [], stale);
   wrap.append(
-    ...nextStep(inbox.filter((pr) => !stale(pr)), (by.Mine ?? []).filter((pr) => !stale(pr))),
+    ...nextStep((weekInbox = inbox.filter((pr) => !stale(pr))), (by.Mine ?? []).filter((pr) => !stale(pr))),
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
     // My own PRs stay in Mine, a self-check running or done: their card there shows it.
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running' && pr.author)),
@@ -774,6 +789,20 @@ function mineColumns(all, stale) {
     if (drafts.length) section.insertBefore(staleFold(drafts, 'Drafts', 'stale drafts'), section.querySelector(':scope > details.stale'));
     return section;
   });
+  // Reviewer load, over Waiting: whom my open PRs (any tab, stale ones aside) still wait on, most first, so I know whom to nudge.
+  const load = new Map();
+  for (const pr of all) if (!stale(pr)) for (const r of pr.reviewers) if (r.state === 'PENDING') load.set(r.login, [...(load.get(r.login) ?? []), r]);
+  if (load.size) {
+    const line = el('p', { className: 'load' });
+    line.append(el('span', { className: 'load-label', textContent: 'Waiting on' }));
+    for (const [login, rs] of [...load].toSorted((a, b) => b[1].length - a[1].length)) {
+      const who = el('span', { className: 'load-who', title: `${login}: ${rs.length} of my PRs wait on them` });
+      who.append(el('img', { src: rs[0].avatarUrl, alt: '', width: 16, height: 16 }), el('span', { textContent: `${login} ${rs.length}` }));
+      line.append(who);
+    }
+    const waiting = sections[MINE_TABS.findIndex(([group]) => group === 'waiting')];
+    waiting.prepend(line);
+  }
   for (const chain of stacks) {
     const section = sections[MINE_TABS.findIndex(([group]) => group === ({ draft: 'needs' }[chain[0].next.group] ?? chain[0].next.group))];
     // On top of the tab, its own heading over it; a tab that held nothing else loses its empty heading.
@@ -878,6 +907,7 @@ async function render() {
   if (!settingsWrites) settings = stored;
   save('settings', settings);
   countToday(state);
+  lastState = state;
   showSettings();
   const syncStatus = syncError
     ? `Sync failed: ${syncError}`
@@ -935,6 +965,7 @@ function openMenu(event, pr) {
   menu.querySelector('[data-do="checks"]').href = `${pr.url}/checks`;
   menu.querySelector('[data-do="branch"]').disabled = !pr.branch;
   menu.querySelector('[data-do="ignore"]').textContent = snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore';
+  menu.querySelector('[data-do="ask"]').hidden = pr.claude !== 'reviewed';
   menu.showPopover();
   // Under the pointer, clear of the rounded corner (outside it for hit tests): on macOS the menu opens on mousedown,
   // and a mouseup outside it would light-dismiss it at once.
@@ -954,6 +985,17 @@ function menuAction(action) {
   if (action === 'branch' || action === 'link') {
     copyText(action === 'branch' ? menuPr.branch : menuPr.url);
     toast(action === 'branch' ? `Copied ${menuPr.branch}` : 'Copied the link');
+  }
+  // Ask: a question about Claude's review, answered in a background cmux tab (bin/claude-ask); the sheet shows the answer once it lands.
+  if (action === 'ask') {
+    const pr = menuPr;
+    const q = prompt(`Ask Claude about its review of ${pr.repo} #${pr.number}`)?.trim();
+    if (!q) return;
+    chrome.runtime.sendNativeMessage('com.sidak.host', { url: `ccask://${repoOf(pr)}/${pr.number}/${encodeURIComponent(q)}` }, (reply) => {
+      const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
+      if (error) alert(`Could not ask:\n${error}\nIs cmux running? Then try again.`);
+      else toast('Asked · the answer shows on this PR in a minute or two');
+    });
   }
   // Ignoring an ignored PR, or one snoozed for the day, brings it back (toggleSnooze).
   if (action === 'ignore') toggleSnooze(`${repoOf(menuPr)}#${menuPr.number}`, IGNORED);
@@ -992,16 +1034,77 @@ function openSheet(pr, row) {
   const more = el('div', { className: 'sheet-more' });
   const act = (label, action) => Object.assign(el('button', { type: 'button', textContent: label }), { onclick: () => { sheet.close(); menuAction(action); } });
   more.append(
+    ...(pr.claude === 'reviewed' ? [act('Ask Claude…', 'ask')] : []),
     ...(pr.branch ? [act('Copy Branch', 'branch')] : []), act('Copy Link', 'link'),
     el('a', { href: `${pr.url}/files`, target: '_blank', textContent: 'Files' }), el('a', { href: `${pr.url}/checks`, target: '_blank', textContent: 'Checks' }),
     Object.assign(act(snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore', 'ignore'), { className: snoozedUntil(pr) >= IGNORED ? '' : 'danger' }),
   );
   sheet.replaceChildren(
-    el('div', { className: 'sheet-grab' }), head, el('p', { className: 'sheet-why', textContent: icon.title }), ...(tldr ? [tldr] : []),
+    el('div', { className: 'sheet-grab' }), head, el('p', { className: 'sheet-why', textContent: icon.title }), ...(tldr ? [tldr] : []), ...sheetAnswer(pr), ...sheetHistory(pr),
     el('a', { className: 'open', href: pr.url, target: '_blank', textContent: 'Open PR' }), ...(buttons.children.length ? [buttons] : []), more,
   );
   sheet.showModal();
 }
+// The last answer to a question about this review (claude-ask), under the TL;DR.
+function sheetAnswer(pr) {
+  if (!pr.answer) return [];
+  const box = el('div', { className: 'sheet-answer' });
+  box.append(el('p', { className: 'sheet-q', textContent: `You asked: ${pr.answer.q}` }), el('p', { textContent: pr.answer.text }),
+    el('p', { className: 'sheet-at', textContent: `Answered ${ago(new Date(pr.answer.at).toISOString())}` }));
+  return [box];
+}
+// The review timeline: each run (when, Skim or Deep, what it posted, the head it read), newest first, then new commits since if any.
+const VERDICT_WORDS = { approved: 'approved', changes: 'asked for changes', commented: 'commented' };
+function sheetHistory(pr) {
+  if (!pr.history.length) return [];
+  const list = el('ol', { className: 'sheet-history', ariaLabel: 'Review history' });
+  if (pr.followUp) list.append(el('li', { className: 'now', textContent: pr.followUp.why === 'requested' ? 'Review requested again' : 'New commits since' }));
+  for (const run of pr.history.toReversed()) {
+    const what = run.self ? 'self-check' : VERDICT_WORDS[run.verdict] ?? 'reviewed';
+    list.append(el('li', { textContent: [ago(new Date(run.at).toISOString()), run.depth === 'quick' ? 'Skim' : 'Deep', what, run.sha].filter(Boolean).join(' · ') }));
+  }
+  return [list];
+}
+// This week (the footer's calendar button), in the sheet: Claude's review runs of the last seven days (claude-review's history, else a
+// PR's latest run), what they caught, the self-checks, Auto's share and the tokens, then the Inbox PRs waiting longest.
+// ponytail: tokens are each PR's latest run's; a PR reviewed twice this week counts its last run's tokens only.
+let lastState = {}, weekInbox = [];
+const WEEK = 7 * 86400000;
+function openWeek() {
+  const since = Date.now() - WEEK;
+  const runs = Object.values(lastState)
+    .flatMap((e) => (e.history?.length ? e.history : e.state === 'reviewed' ? [{ at: e.at, verdict: e.verdict, self: Boolean(e.report) }] : []))
+    .filter((run) => run.at >= since);
+  const reviews = runs.filter((run) => !run.self);
+  const count = (verdict) => reviews.filter((run) => run.verdict === verdict).length;
+  const recent = Object.values(lastState).filter((e) => (e.run ?? 0) * 1000 >= since);
+  const tokens = recent.reduce((sum, e) => sum + (e.tokens ?? 0), 0);
+  const tile = (n, label, sub) => {
+    const box = el('div', { className: 'week-tile' });
+    box.append(el('b', { textContent: n }), el('span', { textContent: label }), ...(sub ? [el('small', { textContent: sub })] : []));
+    return box;
+  };
+  const tiles = el('div', { className: 'week-tiles' });
+  tiles.append(
+    tile(reviews.length, 'Reviews', [count('approved') && `${count('approved')} approved`, count('commented') && `${count('commented')} commented`].filter(Boolean).join(' · ')),
+    tile(count('changes'), 'Caught', 'asked for changes'),
+    tile(runs.length - reviews.length, 'Self-checks', 'of my own PRs'),
+    tile(compact.format(tokens), 'Tokens', `${recent.filter((e) => e.auto).length} runs by Auto`),
+  );
+  const longest = weekInbox.toSorted((a, b) => waitingSince(a) - waitingSince(b)).slice(0, 3);
+  const waiting = el('div', { className: 'sheet-more week-waiting' });
+  for (const pr of longest) {
+    const link = el('a', { href: pr.url, target: '_blank', textContent: `${pr.repo} #${pr.number} · waiting ${ago(new Date(waitingSince(pr)).toISOString())}`, title: pr.title });
+    waiting.append(link);
+  }
+  sheet.replaceChildren(
+    el('div', { className: 'sheet-grab' }), el('p', { className: 'sheet-title', textContent: 'This week' }),
+    el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }), tiles,
+    ...(longest.length ? [el('p', { className: 'week-label', textContent: 'Waiting on you longest' }), waiting] : []),
+  );
+  sheet.showModal();
+}
+document.getElementById('week').onclick = openWeek;
 // A tap above the sheet (on its backdrop) or a swipe down closes it; the sheet's own padding is the sheet, so it checks the spot.
 sheet.addEventListener('click', ({ clientY }) => clientY < sheet.getBoundingClientRect().top && sheet.close());
 let sheetTouch = null;

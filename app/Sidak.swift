@@ -428,8 +428,8 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       replyHandler(nil, nil)
     case "review":
       let url = body["url"] as? String ?? ""
-      // Settings, nudges and mark-ready run in place; only the cmux openers close the unpinned panel and bring cmux forward.
-      let inPlace = ["ccset:", "ccnudge:", "ccready:", "ccopen:"].contains { url.hasPrefix($0) }
+      // Settings, nudges, mark-ready, approve and ask (its tab opens in the background) run in place; only the cmux openers close the unpinned panel and bring cmux forward.
+      let inPlace = ["ccset:", "ccnudge:", "ccready:", "ccopen:", "ccapprove:", "ccask:"].contains { url.hasPrefix($0) }
       if !inPlace && !pinned { panel.orderOut(nil) }
       act(url, front: !inPlace) { ok, text in replyHandler(["ok": ok, "error": text], nil) }
     default:
@@ -465,7 +465,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   var listener: NWListener?
   let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "settings.json", "config.json", "icons/180.png", "icons/32.png"]
   // Every action the board sends, minus Zed (it opens on the Mac's screen); sidaksync: is the phone's refresh button.
-  let remoteActions = ["ccreview:", "ccfix:", "ccmerge:", "ccnudge:", "ccready:", "ccset:", "sidaksync:"]
+  let remoteActions = ["ccreview:", "ccfix:", "ccmerge:", "ccnudge:", "ccready:", "ccapprove:", "ccask:", "ccset:", "sidaksync:"]
   func serve(port: UInt16) {
     let params = NWParameters.tcp
     params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: port)!)

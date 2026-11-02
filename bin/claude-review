@@ -76,6 +76,12 @@ for log in glob.glob(f"{logs}/**/*.jsonl", recursive=True):
 if usage:
     data[key]["tokens"] = sum(u.get("input_tokens", 0) + u.get("cache_creation_input_tokens", 0) + u.get("output_tokens", 0) for u in usage.values())
     data[key]["cached"] = sum(u.get("cache_read_input_tokens", 0) for u in usage.values())
+# Each finished run joins the PR's history (newest last, ten kept), for the sheet's timeline; a later mark of the same run updates it.
+history = [h for h in prev.get("history", []) if h.get("run") != int(run)]
+if state == "reviewed":
+    history.append({k: v for k, v in {"run": int(run), "at": data[key]["at"], "depth": depth, "verdict": data[key].get("verdict"),
+                    "sha": data[key].get("sha", "")[:7], "self": bool(mine)}.items() if v not in (None, "")})
+if history: data[key]["history"] = history[-10:]
 json.dump(data, open(path, "w"))
 PY
 }
