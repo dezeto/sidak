@@ -21,6 +21,15 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 ## What you get
 
 - **Next** line on top: the Inbox PR waiting on you longest (VIPs first), else your own PR that needs you most. A tap opens it.
+- **Approve** on a PR Claude reviewed with comments only (it approves by itself when it has nothing to say): one tap, asked
+  first, posts your approval.
+- **Ask Claude** about a review (right-click, or the phone's card sheet): Claude reads its own notes, its posted review and the
+  PR in a background cmux tab, and the short answer shows on the card's sheet. Nothing is posted.
+- **Review history** in the card's sheet: each of Claude's runs on the PR (when, Skim or Deep, what it posted, the head it read),
+  and whether new commits came since.
+- **Reviewer load** over your Waiting tab: whom your open PRs wait on, most first, so you know whom to nudge.
+- **This week** (the calendar button by the sync time): the week's reviews, what they caught, your self-checks, tokens and
+  Auto's share, and the Inbox PRs waiting on you longest.
 - **Learns from your corrections**: when you delete or reword one of Claude's inline comments after a review posts, the board
   notices within the hour (for a week) and the next reviews get it as taste: no points like the deleted ones, phrasing like yours.
   The same goes for the author's pushback: a thread they answered and resolved with the code unchanged becomes a point not to make.
@@ -60,12 +69,13 @@ Two front ends share one page:
 `bin/` holds the shell side, symlinked into `~/bin`:
 
 - `ccreview-host`: native-messaging host the extension talks to.
-- `claude-review-open`: turns `ccreview://`, `ccfix://`, `ccmerge://`, `ccnudge://`, `ccready://`, `ccopen://` and
-  `ccset://` URLs into actions.
+- `claude-review-open`: turns `ccreview://`, `ccfix://`, `ccmerge://`, `ccnudge://`, `ccready://`, `ccapprove://`, `ccask://`,
+  `ccopen://` and `ccset://` URLs into actions.
 - `claude-review`: checks the PR out in a worktree and runs the review interactively.
+- `claude-ask`: answers a question about a review in a cmux tab and stores the answer for the board.
 - `pr-board`: the counts for the menu bar and the auto-review tick.
 
-`config.json`, `state.json`, `settings.json`, `handoffs/` and `token.txt` are personal or live data and stay out of git.
+`config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/` and `token.txt` are personal or live data and stay out of git.
 
 ## Reading the board
 
@@ -143,7 +153,7 @@ extension and put its id in `config.json`, and set the cmux socket password.
 
 The board works from a phone through a Cloudflare Tunnel, actions included: the tabs float at the bottom in thumb reach, cards are compact rows,
 and a tap on one opens its sheet (TL;DR, Open PR, Skim / Deep or Fix / Nudge / Merge, Copy, Ignore), a tap on a status icon says what it means, a sideways swipe changes
-tab, and reviews still open in cmux on the Mac. In Safari, Share > Add to Home Screen makes it a full-screen Sidak app. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
+tab, and reviews still open in cmux on the Mac. In Safari, Share > Add to Home Screen makes it a full-screen Sidak app. There, Settings > Board > Home Screen badge puts the Inbox count on its icon. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
 valid Cloudflare Access login.
 
 1. In Cloudflare Zero Trust, add a self-hosted Access application for your hostname with an Allow policy for your email, and add
