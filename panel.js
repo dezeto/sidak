@@ -310,9 +310,10 @@ function prRow(pr) {
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author));
   if (isVip(pr, settings.vip)) row.querySelector('.title').prepend(icon('i-star', 'icon vip'));
-  // The status word: why a PR is back since my review (amber, like its dot), else my verdict on one I reviewed, else its review state.
+  // The status word: Auto review on a review auto started that is still running, or why a PR is back since my review (both amber,
+  // like its dot), else my verdict on one I reviewed, else its review state.
   // How and by whom it was reviewed goes in the tooltip.
-  const live = { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
+  const live = pr.claude === 'running' && pr.auto ? 'Auto review' : { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
   const verdict = pr.claude === 'reviewed' ? VERDICTS[pr.verdict] : null;
   const state = row.querySelector('.state');
   state.textContent = live ?? verdict?.[0] ?? REVIEW_LABELS[pr.review];
