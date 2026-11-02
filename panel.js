@@ -210,7 +210,7 @@ function renderFoot() {
     phoneOn() && Object.assign(pick('', 'Phone access is on'), { className: 'pick phone', ariaLabel: 'Phone access is on: settings' }),
     today.tokens && el('span', {
       className: 'used',
-      textContent: `${compact.format(today.tokens)} tokens`,
+      textContent: compact.format(today.tokens),
       title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
     }),
   ].filter(Boolean));
