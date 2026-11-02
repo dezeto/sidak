@@ -405,6 +405,7 @@ function prRow(pr) {
   // bin/claude-review-open focuses the PR's cmux workspace, or with a depth starts one with the picked model and effort.
   const openInCmux = (depth) => (event) => {
     event.preventDefault();
+    const button = event.currentTarget;
     let url = `ccreview://${repoOf(pr)}/${pr.number}${depth ? `/${picks.model}/${picks.effort}/${depth}` : ''}`;
     // My own PRs: ccfix runs claude-fix on the branch, ccmerge squash-merges (the opener handles both schemes).
     if (depth === 'fix') url = `ccfix://${repoOf(pr)}/${pr.number}/${picks.model}/${picks.effort}`;
@@ -420,7 +421,16 @@ function prRow(pr) {
       // Merge, Nudge and Mark ready are gh calls: only a run in cmux needs cmux.
       const gh = { merge: 'merge', nudge: 'nudge', ready: 'mark it ready' }[depth];
       if (error) alert(`Could not ${gh ?? 'start it'}:\n${error}${gh ? '' : '\nIs cmux running? Then try again.'}`);
-      else if (gh) refresh.click();
+      else if (gh) {
+        // Say it worked on the button itself for a moment: the sync that follows changes nothing visible for a nudge.
+        const done = { merge: 'Merging', nudge: 'Nudged', ready: 'Ready' }[depth];
+        if (button?.firstChild?.nodeType === Node.TEXT_NODE) {
+          const label = button.firstChild.data;
+          button.firstChild.data = done;
+          setTimeout(() => (button.firstChild.data = label), 2000);
+        }
+        refresh.click();
+      }
     });
   };
   row.dataset.claude = pr.claude ?? '';

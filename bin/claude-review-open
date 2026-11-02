@@ -26,7 +26,15 @@ if [[ $scheme == ccmerge ]]; then
   [[ $out == *"part of a stack"* ]] || { print -r -- "$out" >&2; exit 1; }
   exec gh api -X PUT "repos/$org/$repo/pulls/$n/merge-async" -f merge_method=squash --jq '"merge \(.status)"'
 fi
-if [[ $scheme == ccnudge ]]; then exec gh pr edit "$n" -R "$org/$repo" --add-reviewer "$(gh pr view "$n" -R "$org/$repo" --json reviewRequests --jq '[.reviewRequests[] | .login // (.slug | select(.) | "'$org'/" + .)] | join(",")')"; fi
+if [[ $scheme == ccnudge ]]; then
+  # Asking again someone already asked is a no-op on GitHub (no notification), so each pending request is withdrawn and made again:
+  # the new request is what pings them.
+  pending=$(gh pr view "$n" -R "$org/$repo" --json reviewRequests --jq '[.reviewRequests[] | .login // (.slug | select(.) | "'$org'/" + .)] | join(",")')
+  [[ -n $pending ]] || { print "nobody is pending on $repo#$n" >&2; exit 1; }
+  gh pr edit "$n" -R "$org/$repo" --remove-reviewer "$pending" >/dev/null || exit 1
+  gh pr edit "$n" -R "$org/$repo" --add-reviewer "$pending" >/dev/null || exit 1
+  exec print "nudged ${pending//,/, }"
+fi
 if [[ $scheme == ccready ]]; then exec gh pr ready "$n" -R "$org/$repo"; fi
 if [[ $scheme == ccopen ]]; then
   dir=$repos/$repo
