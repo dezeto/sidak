@@ -465,7 +465,8 @@
     <div id="tabs" class="glass" role="group" aria-label="PR lists"></div>
     <label class="search glass" title="Search (/)">
       <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
-      <input id="search" name="q" type="search" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
+      <!-- tabindex -1: WebKit focuses the first text field when the panel first takes the keyboard; / or a click opens search instead. -->
+      <input id="search" name="q" type="search" tabindex="-1" placeholder="Search title, #number or author…" aria-label="Search pull requests" autocomplete="off" />
     </label>
     <button id="pin" class="glass" type="button" aria-pressed="false" aria-label="Keep the board floating" title="Keep the board floating (p)"><svg class="icon" aria-hidden="true"><use href="#i-pin" /></svg></button>
   </div>
