@@ -25,6 +25,8 @@ function toPr(pr, viewer) {
     reviewers: [...reviewers.values()],
     mergeable: pr.mergeable ?? null,
     branch: pr.headRefName ?? null,
+    // The branch it merges into: another of my PRs' branch when it sits on that PR in a stack (panel.js stacksOf).
+    base: pr.baseRefName ?? null,
     unresolved: (pr.reviewThreads?.nodes ?? []).filter((t) => !t.isResolved).length,
     head: pr.headRefOid ?? null,
     pushedAt: commit?.committedDate ?? null,

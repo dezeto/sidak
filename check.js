@@ -20,6 +20,7 @@ const pr = (overrides) =>
       commits: { nodes: [] },
       mergeable: 'MERGEABLE',
       headRefName: 'feat/x',
+      baseRefName: 'main',
       reviewThreads: { nodes: [] },
       ...overrides,
     },

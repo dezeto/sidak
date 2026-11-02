@@ -11,7 +11,7 @@ const QUERY = `query ($q: String!) {
   search(query: $q, type: ISSUE, first: 50) {
     nodes {
       ... on PullRequest {
-        title url number isDraft updatedAt reviewDecision mergeable headRefName headRefOid
+        title url number isDraft updatedAt reviewDecision mergeable headRefName baseRefName headRefOid
         reviewThreads(first: 100) { nodes { isResolved } }
         repository { name nameWithOwner }
         author { login }

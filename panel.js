@@ -689,10 +689,14 @@ function waitingColumn(title, iconId, prs, stale) {
   }
   return section;
 }
-function mineColumns(prs, stale) {
-  for (const pr of prs) Object.assign(pr, { mine: true, next: authorState(pr) });
-  prs.sort((a, b) => a.next.rank - b.next.rank || Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
-  return MINE_TABS.map(([group, title, iconId]) => {
+function mineColumns(all, stale) {
+  for (const pr of all) Object.assign(pr, { mine: true, next: authorState(pr) });
+  all.sort((a, b) => a.next.rank - b.next.rank || Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+  // A stack's parts leave their own tabs: the whole stack shows in its bottom PR's tab (the next to merge), stale or draft or not.
+  const stacks = stacksOf(all);
+  const stacked = new Set(stacks.flat());
+  const prs = all.filter((pr) => !stacked.has(pr));
+  const sections = MINE_TABS.map(([group, title, iconId]) => {
     // Drafts are mine to move too, so they fold at the end of To do (the stale fold class: search opens it), out of its count.
     const rows = prs.filter((pr) => pr.next.group === group || (group === 'needs' && pr.next.group === 'draft'));
     const fresh = rows.filter((pr) => !stale(pr));
@@ -702,6 +706,52 @@ function mineColumns(prs, stale) {
     if (drafts.length) section.insertBefore(staleFold(drafts, 'Drafts', 'stale drafts'), section.querySelector(':scope > details.stale'));
     return section;
   });
+  for (const chain of stacks) {
+    const section = sections[MINE_TABS.findIndex(([group]) => group === ({ draft: 'needs' }[chain[0].next.group] ?? chain[0].next.group))];
+    // On top of the tab, its own heading over it; a tab that held nothing else loses its empty heading.
+    if (section.querySelector(':scope > p.empty')?.remove() === undefined && !section.querySelector(':scope > .pr')) section.querySelector(':scope > h2').remove();
+    section.prepend(stackBlock(chain));
+  }
+  return sections;
+}
+
+// Stacks: my PRs on each other's branches (a PR whose base is another's branch sits on it), as chains bottom → top of 2 or more.
+// ponytail: one PR per branch; two PRs on the same base keep the last, a tree if stacks ever fork.
+function stacksOf(prs) {
+  const at = (pr, branch) => `${repoOf(pr)}:${branch}`;
+  const byBranch = new Map(prs.map((pr) => [at(pr, pr.branch), pr]));
+  const above = new Map(prs.filter((pr) => byBranch.has(at(pr, pr.base))).map((pr) => [byBranch.get(at(pr, pr.base)), pr]));
+  return prs.filter((pr) => above.has(pr) && !byBranch.has(at(pr, pr.base))).map((bottom) => {
+    const chain = [bottom];
+    while (above.has(chain.at(-1))) chain.push(above.get(chain.at(-1)));
+    return chain;
+  });
+}
+// One stack: its cards bottom first, linked by a line through their icons (panel.html .stack), under a heading whose Merge stack
+// merges the top PR, which on GitHub takes every open part under it along (merge-async, the opener's fallback for a stacked PR).
+function stackBlock(chain) {
+  const top = chain.at(-1);
+  const ready = chain.every((pr) => pr.next.group === 'ready');
+  const merge = el('button', {
+    type: 'button',
+    className: 'merge-stack',
+    textContent: 'Merge stack',
+    disabled: !ready,
+    title: ready ? `Squash-merge all ${chain.length}, bottom first` : 'Merges once every part is approved with green checks',
+  });
+  merge.onclick = () => {
+    if (!confirm(`Squash-merge the whole stack, ${chain.length} PRs from ${chain[0].repo} #${chain[0].number} up to #${top.number}?`)) return;
+    chrome.runtime.sendNativeMessage('com.sidak.host', { url: `ccmerge://${repoOf(top)}/${top.number}` }, (reply) => {
+      const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
+      if (error) alert(`Could not merge the stack:\n${error}`);
+      else refresh.click();
+    });
+  };
+  const heading = el('h2', { title: 'GitHub merges a stack from the bottom' });
+  heading.append(el('span', { textContent: 'Stack' }), el('span', { className: 'count', textContent: chain.length }), merge);
+  const block = el('div', { className: 'stack' });
+  block.append(heading, ...chain.map(prRow));
+  return block;
 }
 
 function bookmarkNode(node) {
@@ -778,7 +828,7 @@ async function render() {
   list.replaceChildren(...missing, ...prs, ...(prs.length && bookmarks.length ? [el('hr')] : []), ...bookmarks);
   const columns = [...list.querySelectorAll('.column')];
   // Counts leave out the folded stale rows and drafts; the switch's Mine count is To do.
-  const prsIn = (section) => section.querySelectorAll(':scope > .pr').length;
+  const prsIn = (section) => section.querySelectorAll(':scope > .pr, :scope > .stack > .pr').length;
   tabsBar.replaceChildren(...columns.map((section) => tabButton(section.dataset.tab, prsIn(section), section.dataset.group)));
   const count = (tab) => prsIn(columns.find((section) => section.dataset.tab === tab) ?? el('section'));
   counts = { inbox: count('Inbox'), mine: count('To do') };

@@ -241,11 +241,11 @@
   .folder[open]::after { content: ''; position: absolute; top: 32px; bottom: 4px; left: 12px; width: 1px; background: var(--lg-border-subtle); }
   .folder > :not(summary) { margin-left: 14px; }
   /* Section labels: 11 px over a hairline (To review, Running, Stale). */
-  .column > h2, details.stale > summary {
+  .column > h2, .stack > h2, details.stale > summary {
     display: flex; align-items: center; gap: 10px; margin: 0; padding: 14px 20px 6px; border-radius: 0;
     font-size: 11px; font-weight: 600; line-height: 14px; letter-spacing: 0.2px; color: var(--lg-ink-muted);
   }
-  .column > h2::after, details.stale > summary::after { content: ''; flex: 1; height: 1px; background: var(--lg-border-subtle); }
+  .column > h2::after, .stack > h2::after, details.stale > summary::after { content: ''; flex: 1; height: 1px; background: var(--lg-border-subtle); }
   .column > h2 .icon { width: 13px; height: 13px; }
   kbd { margin-left: auto; padding: 0 4px; border-radius: 4px; background: var(--lg-bg-interactive); font: 10px/16px ui-monospace, Menlo, monospace; color: var(--lg-ink-muted); }
   #help { max-width: min(400px, calc(100vw - 40px)); padding: 12px 16px; overscroll-behavior: contain; border-radius: var(--lg-radius-lg); font-size: 12px; }
@@ -261,6 +261,16 @@
   .next b { flex: none; font-weight: 600; color: var(--lg-ink); }
   .next span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .next:hover { background: var(--hover); color: var(--lg-ink); }
+  /* A stack of my PRs (panel.js stackBlock): Merge stack after the heading's rule; a line links the parts' icons, drawn above and
+     below each icon and cut at the card's edges. */
+  .stack > h2 .merge-stack { order: 1; padding: 0; font-size: 11px; font-weight: 600; color: var(--lg-accent); }
+  .stack > h2 .merge-stack:disabled { color: var(--lg-ink-muted); opacity: 0.6; cursor: default; }
+  .stack > .pr { overflow: hidden; }
+  .stack > .pr + .pr .claude::before, .stack > .pr:not(:last-child) .claude::after {
+    content: ''; position: absolute; left: calc(50% - 0.75px); width: 1.5px; height: 200px; background: color-mix(in srgb, var(--lg-ink-muted) 45%, transparent);
+  }
+  .stack > .pr + .pr .claude::before { bottom: calc(100% + 3px); }
+  .stack > .pr:not(:last-child) .claude::after { top: calc(100% + 3px); }
   .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
   /* Stale rows fold away at the end of a list, outside its count; a search opens the fold. */
   details.stale > summary { cursor: pointer; }
