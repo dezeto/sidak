@@ -11,7 +11,7 @@
 
 <p align="center">
   <img src="docs/board-dark.png" width="400" alt="The board in dark mode with the right-click menu open on a PR card">
-  <img src="docs/settings-light.png" width="400" alt="The board in light mode with the settings popover open">
+  <img src="docs/settings-light.png" width="400" alt="The board in light mode with the settings card raised over the blurred list">
 </p>
 
 Sidak (Indonesian: *inspeksi mendadak*, a surprise inspection) lists the pull requests waiting on you. One click starts
