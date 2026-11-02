@@ -215,17 +215,12 @@
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
-  /* Phone tab counts are iOS badges: a small capsule, solid on the open tab; amber while reviews run; Inbox's turns red (in place of
-     the dot) while a PR I reviewed is back. */
-  :root[data-remote] #tabs .n {
-    display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
-    border-radius: 9px; background: rgba(127, 127, 127, 0.24); color: var(--lg-ink); font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
-  }
-  :root[data-remote] #tabs button[aria-pressed='true'] .n { background: var(--lg-ink); color: var(--ambient); }
-  :root[data-remote] #tabs .n[data-live] { background: var(--amber); color: #1c1c1e; }
-  :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox'] .n { background: var(--dot-red); color: #fff; }
-  :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after { display: none; }
-  :root[data-remote] #tabs button { gap: 5px; padding: 0 2px; }
+  /* Phone tab counts, quiet like Mail's folder counts: the number after the word in a lighter weight, grey, white-ish on the open tab;
+     amber while reviews run. Inbox keeps its red dot while a reviewed PR is back. */
+  :root[data-remote] #tabs .n { font-weight: 400; color: rgba(127, 127, 127, 0.9); font-variant-numeric: tabular-nums; }
+  :root[data-remote] #tabs button[aria-pressed='true'] .n { color: color-mix(in srgb, var(--lg-ink) 70%, transparent); }
+  :root[data-remote] #tabs .n[data-live] { color: var(--amber); font-weight: 600; }
+  :root[data-remote] #tabs button { gap: 4px; padding: 0 2px; }
   /* Each tab as wide as its word and badge, the rest shared out, so a long one (Reviewed 10) never cuts its word. */
   :root[data-remote] #tabs button { flex: 1 1 auto; }
   :root[data-remote] #tabs::before { left: 0; width: var(--w, 0); transform: translateX(var(--x, 0)); }
