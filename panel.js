@@ -206,12 +206,15 @@ function renderFoot() {
     settings.auto?.on && (settings.autoCap
       ? pick(`Auto ${today.auto}/${settings.autoCap}`, `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`)
       : pick('Auto', `Auto review is on, no daily limit (${today.auto} today)`)),
+    // Phone access on: a phone icon, so an open tunnel is never forgotten; a tap opens the settings to turn it off.
+    phoneOn() && Object.assign(pick('', 'Phone access is on'), { className: 'pick phone', ariaLabel: 'Phone access is on: settings' }),
     today.tokens && el('span', {
       className: 'used',
       textContent: `${compact.format(today.tokens)} tokens`,
       title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
     }),
   ].filter(Boolean));
+  footConfig.querySelector('.phone')?.append(icon('i-phone'));
 }
 function showSettings() {
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
