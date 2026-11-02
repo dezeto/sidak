@@ -547,13 +547,32 @@ function board(sections, state) {
   const inbox = [...requested.filter((pr) => pr.claude !== 'running' && pr.claude !== 'reviewed'), ...reviewed.filter((pr) => pr.followUp)]
     .sort((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip));
   const wrap = el('div', { className: 'board' });
+  const mine = mineColumns(by.Mine ?? [], stale);
   wrap.append(
+    ...nextStep(inbox.filter((pr) => !stale(pr)), (by.Mine ?? []).filter((pr) => !stale(pr))),
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running')),
     column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp)),
-    ...mineColumns(by.Mine ?? [], stale),
+    ...mine,
   );
   return wrap;
+}
+
+// Next: one line over every tab saying what to do now, a link to that PR. The Inbox PR waiting longest (VIPs first, no drafts), else my own PR
+// that needs me most (mineColumns has ranked Mine); no line when both are clear.
+function nextStep(inbox, mine) {
+  const since = (pr) => pr.followUp?.since ?? Date.parse(pr.requestedAt ?? pr.updatedAt);
+  const review = inbox.filter((pr) => pr.review !== 'DRAFT').toSorted((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip) || since(a) - since(b))[0];
+  const fix = mine.find((pr) => pr.next.group === 'needs');
+  const pr = review ?? fix;
+  if (!pr) return [];
+  const waited = review && ago(new Date(since(review)).toISOString());
+  const what = review
+    ? [review.followUp ? 'Review again' : 'Review', `by ${review.author}${waited === 'now' ? '' : `, waiting ${waited}`}`]
+    : ['Fix', fix.next.pill];
+  const link = el('a', { className: 'next', href: pr.url, target: '_blank', title: pr.title });
+  link.append(el('b', { textContent: 'Next' }), el('span', { textContent: `${what[0]} ${pr.repo}#${pr.number} ${what[1]}` }));
+  return [link];
 }
 
 // Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.

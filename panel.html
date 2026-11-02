@@ -150,6 +150,9 @@
   :root[data-settings] main { filter: blur(8px); opacity: 0.5; }
   @media (prefers-reduced-motion: no-preference) { main { transition: filter var(--lg-duration-normal), opacity var(--lg-duration-normal); } }
   .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
+  /* Two short settings to a row; one with three or more choices, and the VIP field, takes the whole row. */
+  #settings { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
+  .set:has(> .seg > :nth-child(3)), .set.vip { grid-column: 1 / -1; }
   .set > .l { font-size: 12.5px; font-weight: 500; }
   .seg { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: var(--lg-bg-interactive); }
   .seg button { height: 28px; padding: 0 11px; border-radius: 14px; font-size: 11.5px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
@@ -236,6 +239,14 @@
   #help td { padding: 3px 8px 3px 0; vertical-align: top; }
   #help kbd { margin: 0; font-size: 11px; }
   .count { font-variant-numeric: tabular-nums; }
+  /* Next: one quiet line over the lists, the PR to open now. */
+  .next {
+    display: flex; gap: 8px; min-width: 0; margin: 0 14px; padding: 6px 8px; border-radius: 10px; font-size: 12px; line-height: 16px;
+    color: var(--lg-ink-muted); text-decoration: none; grid-column: 1 / -1;
+  }
+  .next b { flex: none; font-weight: 600; color: var(--lg-ink); }
+  .next span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .next:hover { background: var(--hover); color: var(--lg-ink); }
   .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
   /* Stale rows fold away at the end of a list, outside its count; a search opens the fold. */
   details.stale > summary { cursor: pointer; }

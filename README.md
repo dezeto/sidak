@@ -20,6 +20,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 
 ## What you get
 
+- **Next** line on top: the Inbox PR waiting on you longest (VIPs first), else your own PR that needs you most. A tap opens it.
 - **Inbox, Running, Reviewed** tabs, and a second profile for your own PRs (To do with your drafts folded under it, Waiting, Ready) with
   Fix, Nudge, Merge and Mark ready actions.
 - **Skim** (quick) or **Deep** (full) review per PR, with model and effort picked in the panel; re-review any time.
