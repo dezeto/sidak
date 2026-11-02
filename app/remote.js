@@ -63,7 +63,12 @@
     const t = e.touches[0];
     if (start && !held && Math.hypot(t.clientX - start.clientX, t.clientY - start.clientY) > 10) drop();
   }, { passive: true });
-  addEventListener('touchcancel', () => { held = null; drop(); }, { passive: true });
+  // iOS may still take a held touch for itself (touchcancel, no lift): a press already held opens the menu then.
+  addEventListener('touchcancel', () => {
+    const was = held;
+    drop();
+    if (was) setTimeout(() => was.card.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: was.clientX, clientY: was.clientY })));
+  }, { passive: true });
   addEventListener('touchend', () => {
     held?.card.removeAttribute('data-held');
     drop();

@@ -57,7 +57,28 @@
      keeps the width; an open TL;DR goes under them), no key hints, no Zed (it opens at the Mac) and no iOS link preview on the long
      press that opens the card menu. */
   :root[data-remote] body { width: auto; }
-  :root[data-remote] .pr .actions { display: flex; grid-column: 2 / -1; grid-row: 3; margin: 8px 0 2px 12px; }
+  :root[data-remote] .pr .actions { display: flex; grid-column: 2 / 4; grid-row: 3; margin: 8px 0 2px 10px; }
+  /* Phone: ⋯ at the end of the actions line opens the card menu (a long press does too); cards never start iOS's link drag. */
+  .more-menu { display: none; }
+  :root[data-remote] .more-menu {
+    display: grid; place-items: center; grid-column: 4; grid-row: 3; justify-self: end; width: 36px; height: 32px; margin-top: 8px;
+    border-radius: 16px; background: var(--lg-bg-interactive); color: var(--lg-ink-muted); font-size: 17px; font-weight: 700; letter-spacing: 1px;
+  }
+  :root[data-remote] .pr { -webkit-user-drag: none; }
+  /* iOS: clear of the notch, the home bar and a landscape side; fields at 16 px so focusing one never zooms the page; a press shows. */
+  :root[data-remote] body { min-height: 100dvh; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+  :root[data-remote] header { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
+  :root[data-remote] #foot { padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)); }
+  :root[data-remote] :is(#search, #vip, .num) { font-size: 16px; }
+  :root[data-remote] .pr:active { background: var(--row-hover); }
+  :root[data-remote] :is(.review, .more-menu, .glass, #tabs button, #foot .pick):active { transform: scale(0.95); }
+  /* A short note at the bottom (panel.js toast): what a tapped icon means, Copied. */
+  #toast {
+    position: fixed; left: 50%; bottom: calc(64px + env(safe-area-inset-bottom, 0px)); z-index: 5; max-width: calc(100vw - 48px); padding: 8px 14px;
+    border-radius: 16px; background: var(--lg-bg-elevated); box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); color: var(--lg-ink);
+    font-size: 13px; font-weight: 500; opacity: 0; transform: translate(-50%, 8px); pointer-events: none; transition: opacity var(--lg-duration-fast), transform var(--lg-duration-fast);
+  }
+  #toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
   :root[data-remote] .tldr { grid-row: 4; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }

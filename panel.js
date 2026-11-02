@@ -11,6 +11,8 @@ const list = document.getElementById('list');
 // Hover in script (panel.html data-hot): the card under the pointer, cleared when the pointer leaves the list.
 let hot = null;
 list.addEventListener('mouseover', ({ target }) => {
+  // A phone's tap fires mouseover too and would leave its card lit; the phone has :active instead.
+  if (document.documentElement.hasAttribute('data-remote')) return;
   const row = target.closest('.pr');
   if (row === hot) return;
   hot?.removeAttribute('data-hot');
@@ -418,6 +420,13 @@ function prRow(pr) {
     };
   }
   row.oncontextmenu = (event) => openMenu(event, pr);
+  row.draggable = false;
+  const more = el('button', { type: 'button', className: 'more-menu', textContent: '⋯', ariaLabel: 'More: Zed, branch, files, checks, link, ignore' });
+  more.onclick = (event) => {
+    event.stopPropagation();
+    openMenu(event, pr);
+  };
+  row.append(more);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
   if (overdue(pr)) info.prepend(el('span', { className: 'overdue', textContent: `waiting ${ago(new Date(waitingSince(pr)).toISOString())}`, title: 'Waiting on you over a day' }));
   if (snoozedUntil(pr) >= IGNORED) info.append(...words('ignored'));
@@ -475,7 +484,15 @@ function prRow(pr) {
     event.preventDefault();
     row.querySelector('.review[data-depth="quick"]')?.click();
   };
-  claude.onclick = pr.claude === 'failed' ? skim : pr.claude === 'running' ? openInCmux(null) : null;
+  // On the phone a tap on the icon only says what it means, since there is no hover to show its tooltip, and a stray tap must never
+  // start a review: Skim and Deep are the buttons right under it.
+  const explain = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toast(marks.join(' · '));
+  };
+  const remote = document.documentElement.hasAttribute('data-remote');
+  claude.onclick = remote ? explain : pr.claude === 'failed' ? skim : pr.claude === 'running' ? openInCmux(null) : null;
   const actions = row.querySelector('.actions');
   if (pr.mine) {
     // My PR: the status icon says what it waits on (statusMark), the reason is the second line, the next step a button in front of
@@ -910,7 +927,10 @@ menu.onclick = ({ target }) => {
   const action = target.closest('[data-do]')?.dataset.do;
   if (!action) return;
   menu.hidePopover();
-  if (action === 'branch' || action === 'link') copyText(action === 'branch' ? menuPr.branch : menuPr.url);
+  if (action === 'branch' || action === 'link') {
+    copyText(action === 'branch' ? menuPr.branch : menuPr.url);
+    toast(action === 'branch' ? `Copied ${menuPr.branch}` : 'Copied the link');
+  }
   // Ignoring an ignored PR, or one snoozed for the day, brings it back (toggleSnooze).
   if (action === 'ignore') toggleSnooze(`${repoOf(menuPr)}#${menuPr.number}`, IGNORED);
   // The opener runs Zed on the PR's review worktree, else on the checkout.
@@ -920,6 +940,14 @@ menu.onclick = ({ target }) => {
     if (error) alert(`Could not open Zed:\n${error}\nCheck that the zed CLI is installed (zed: install cli in Zed), then try again.`);
   });
 };
+// A note for two seconds at the bottom: on the phone what a tapped status icon means (no hover there), and Copied after a copy.
+const toastBox = document.body.appendChild(el('div', { id: 'toast', role: 'status' }));
+function toast(text) {
+  toastBox.textContent = text;
+  toastBox.dataset.on = '';
+  clearTimeout(toastBox.timer);
+  toastBox.timer = setTimeout(() => delete toastBox.dataset.on, 2000);
+}
 // sidak:// is no secure context, so WKWebView may lack the Clipboard API: copy from a selected textarea there.
 function copyText(text) {
   if (navigator.clipboard) return navigator.clipboard.writeText(text).catch((error) => alert(`Could not copy:\n${error}`));
