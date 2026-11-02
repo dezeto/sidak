@@ -201,9 +201,8 @@ function renderFoot() {
   const profile = settings.profile || config.defaultProfile;
   footConfig.replaceChildren(...[
     profile && pick(profile, 'Claude profile for new reviews'),
-    // The model by its initial (O, S); the tooltip names it.
-    pick(label('model')[0], `Model for new reviews: ${label('model')}`),
-    pick(label('effort'), 'Effort for new reviews'),
+    // Model by its initial and effort as one word, O · Med; the tooltip names both.
+    pick(`${label('model')[0]} · ${label('effort')}`, `Model and effort for new reviews: ${label('model')}, ${label('effort')}`),
     settings.auto?.on && (settings.autoCap
       ? pick(`Auto ${today.auto}/${settings.autoCap}`, `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`)
       : pick('Auto', `Auto review is on, no daily limit (${today.auto} today)`)),
