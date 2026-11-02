@@ -202,6 +202,10 @@
      the large title it grows to hold the small one. */
   :root[data-remote][data-compact] .ios-nav { height: calc(env(safe-area-inset-top, 0px) + 44px); border-bottom: 0.5px solid var(--group-line); pointer-events: auto; }
   :root[data-remote]:not([data-compact]) .ios-nav::before { visibility: hidden; }
+  /* At the very top nothing is under the clock, so no strip; once the list scrolls under it, a strip that fades out at its foot (no
+     hard edge) until the small title takes over. */
+  :root[data-remote]:not([data-scrolled]) .ios-nav::after { visibility: hidden; }
+  :root[data-remote]:not([data-compact]) .ios-nav::after { bottom: -18px; -webkit-mask-image: linear-gradient(#000 60%, transparent); mask-image: linear-gradient(#000 60%, transparent); }
   /* The blur sits on its own layer behind the word, and the bar shows without a fade: WebKit blurs the text of an element that has a
      backdrop filter while its opacity changes. */
   :root[data-remote] .ios-nav::after {
