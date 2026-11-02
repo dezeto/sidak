@@ -617,10 +617,23 @@ function board(sections, state) {
     column('Inbox', 'i-inbox', inbox.filter((pr) => !stale(pr)), 'inbox', inbox.filter(stale)),
     // My own PRs stay in Mine, a self-check running or done: their card there shows it.
     column('Running', 'i-play', all.filter((pr) => pr.claude === 'running' && pr.author)),
-    column('Reviewed', 'i-done', reviewed.filter((pr) => !pr.followUp && pr.author)),
+    reviewedColumn(reviewed.filter((pr) => !pr.followUp && pr.author)),
     ...mine,
   );
   return wrap;
+}
+
+// Reviewed: the ones the author still has to fix (changes asked, comments) first; my approvals under their own heading, waiting only on
+// the author's merge.
+function reviewedColumn(prs) {
+  const approved = prs.filter((pr) => pr.verdict === 'approved');
+  const section = column('Reviewed', 'i-done', prs.filter((pr) => pr.verdict !== 'approved'));
+  if (approved.length) {
+    const heading = el('h2');
+    heading.append(el('span', { textContent: 'Approved' }), el('span', { className: 'count', textContent: approved.length }));
+    section.append(heading, ...approved.map(prRow));
+  }
+  return section;
 }
 
 // Next: one line over every tab saying what to do now, a link to that PR. The Inbox PR waiting longest (VIPs first, no drafts), else my own PR
