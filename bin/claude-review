@@ -88,7 +88,8 @@ settle() {
   trap - HUP TERM; kill $watcher 2>/dev/null
   # First and under nohup: the closing tab kills this trap before a slow GitHub call returns.
   nohup git -C $CRM worktree remove --force "$wt" >/dev/null 2>&1 &
-  posted && mark reviewed || mark failed; exit 129
+  # The handoff (on my own PR, the fix list) is the run's last step: written means done, even with the tab closed after.
+  { posted || handed_off; } && mark reviewed || mark failed; exit 129
 }
 finish() { echo; echo "review $repo#$n finished (exit $1)"; git -C $CRM worktree remove --force "$wt" 2>/dev/null; exec zsh; }
 
@@ -124,6 +125,20 @@ done
 rm -f -- $SIDAK_DIR/handoffs/*.md(N.m+14)
 sys=$(mktemp)
 cat "$MEM/MEMORY.md" "$CRMMEM/feedback_kent_beck_style.md" "$CRMMEM/feedback_no_claude_footer_on_issue_comments.md" > "$sys" 2>/dev/null
+# What $login did to earlier reviews' comments (pr-board learn): the latest 25, so this review drops what was deleted and writes
+# like what was rewritten.
+python3 - $SIDAK_DIR/learn/lessons.jsonl "$login" >> "$sys" 2>/dev/null <<'PY'
+import json, os, sys
+path, login = sys.argv[1:]
+if not os.path.exists(path): sys.exit()
+lessons = [json.loads(line) for line in open(path) if line.strip()][-25:]
+if not lessons: sys.exit()
+cut = lambda text: " ".join(text.split())[:400]
+print(f"\n\n# How {login} corrected earlier reviews\nThese inline comments from your earlier reviews were changed by {login} after posting. Treat them as the reviewer's taste: do not raise points like the deleted ones, and phrase findings the way the rewritten ones read.")
+for lesson in lessons:
+    if lesson["kind"] == "deleted": print(f"- Deleted ({lesson['pr']}, {lesson['path']}): {cut(lesson['before'])}")
+    else: print(f"- Rewritten ({lesson['pr']}, {lesson['path']}): was \"{cut(lesson['before'])}\" -> now \"{cut(lesson['after'])}\"")
+PY
 cd "$wt"
 # Re-review when my earlier review is on the PR: re-check each earlier point and approve when all is settled.
 prior=$(gh api "repos/$REPO/pulls/$n/reviews" --jq "[.[] | select(.user.login == \"$login\")] | length" 2>/dev/null)
@@ -182,6 +197,6 @@ rc=$?
 kill $watcher 2>/dev/null
 rm -f "$sys"; cd $CRM
 # posted first: it sets $verdict even when claude exited 0.
-if posted || [[ $rc == 0 ]]; then mark reviewed; else mark failed; fi
+if posted || handed_off || [[ $rc == 0 ]]; then mark reviewed; else mark failed; fi
 finish $rc
 }; exit

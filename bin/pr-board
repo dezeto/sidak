@@ -86,10 +86,65 @@ if changed: json.dump({key: entry for key, entry in state.items() if entry}, ope
 PY
 }
 
+# Learning from my hand on Claude's reviews: a comment I deleted is a point not to make, one I reworded shows how to say it.
+# Each review Claude posted gets its inline comments saved (learn/posted.json) on the first board after it lands; for a week after,
+# at most hourly, they are compared with GitHub and every deletion or edit is appended to learn/lessons.jsonl, which claude-review
+# hands to the next review. Runs in the background of board, so the menu bar count never waits on it.
+learn() {
+  python3 - $STATE $SIDAK_DIR/learn "$ME" <<'PY'
+import calendar, json, os, subprocess, sys, time
+state_path, folder, me = sys.argv[1:]
+os.makedirs(folder, exist_ok=True)
+posted_path, lessons_path = f"{folder}/posted.json", f"{folder}/lessons.jsonl"
+posted = json.load(open(posted_path)) if os.path.exists(posted_path) else {}
+state = json.load(open(state_path))
+now = time.time()
+def gh(path):
+    out = subprocess.run(["gh", "api", f"{path}?per_page=100"], capture_output=True, text=True)
+    return json.loads(out.stdout) if out.returncode == 0 else None
+# Save each new review's comments as posted. Own PRs' self-checks post nothing; a review older than two days is left alone.
+for key, entry in state.items():
+    if entry.get("state") != "reviewed" or entry.get("report") or now - entry.get("run", 0) > 2 * 86400: continue
+    if posted.get(key, {}).get("run") == entry.get("run"): continue
+    repo, n = key.split("#")
+    reviews = gh(f"repos/{repo}/pulls/{n}/reviews")
+    if reviews is None: continue
+    mine = [r for r in reviews if r["user"]["login"] == me and r.get("submitted_at") and
+            calendar.timegm(time.strptime(r["submitted_at"], "%Y-%m-%dT%H:%M:%SZ")) >= entry["run"] - 60]
+    if not mine: continue
+    review = mine[-1]
+    comments = gh(f"repos/{repo}/pulls/{n}/reviews/{review['id']}/comments") or []
+    posted[key] = {"run": entry["run"], "review": review["id"], "checked": now, "since": now,
+                   "comments": [{"id": c["id"], "path": c["path"], "line": c.get("line") or c.get("original_line"), "body": c["body"]} for c in comments]}
+# Compare: a comment gone was deleted; one with another body was rewritten. Each counts once, then leaves the snapshot.
+lessons = []
+for key, snap in list(posted.items()):
+    if now - snap["since"] > 7 * 86400: del posted[key]; continue
+    if now - snap["checked"] < 3600 or not snap["comments"]: continue
+    repo, n = key.split("#")
+    current = gh(f"repos/{repo}/pulls/{n}/comments")
+    if current is None: continue
+    snap["checked"] = now
+    by_id = {c["id"]: c["body"] for c in current}
+    keep = []
+    for c in snap["comments"]:
+        if c["id"] not in by_id:
+            lessons.append({"at": int(now), "pr": key, "path": c["path"], "kind": "deleted", "before": c["body"]})
+        elif by_id[c["id"]].strip() != c["body"].strip():
+            lessons.append({"at": int(now), "pr": key, "path": c["path"], "kind": "edited", "before": c["body"], "after": by_id[c["id"]]})
+        else: keep.append(c)
+    snap["comments"] = keep
+with open(lessons_path, "a") as f:
+    for lesson in lessons: f.write(json.dumps(lesson) + "\n")
+tmp = posted_path + ".tmp"; json.dump(posted, open(tmp, "w")); os.replace(tmp, posted_path)
+PY
+}
+
 board() {
   # Self-check fix lists (claude-review on my own PR) last a week.
   rm -f -- $SIDAK_DIR/reviews/*.md(N.mh+168)
   sweep
+  learn >/dev/null 2>&1 &!
   local s=$(<$STATE) moved=$(updated)
   # The panel's stale cut-off (settings.json staleDays, default 30, 0 = off) keeps the menu bar count in step with its Inbox.
   local days=$(python3 -c 'import json, sys; print(int(json.load(open(sys.argv[1])).get("staleDays", 30)))' $SETTINGS 2>/dev/null || print 30)
@@ -201,6 +256,7 @@ status() {
 
 case $cmd in
   board) board ;;
+  learn) learn ;;
   auto) auto ;;
   quick|review) start ;;
   status) status ;;
