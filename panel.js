@@ -492,7 +492,9 @@ function prRow(pr) {
   const explain = (event) => {
     event.preventDefault();
     event.stopPropagation();
-    toast(marks.join(' · '));
+    // My own PR's icon says what it waits on in full (its reason line), not only the short word.
+    const reason = pr.mine && pr.next?.reason;
+    toast([reason ? reason[0].toUpperCase() + reason.slice(1) : mark, ...marks.slice(1)].join(' · '));
   };
   const remote = document.documentElement.hasAttribute('data-remote');
   claude.onclick = remote ? explain : pr.claude === 'failed' ? skim : pr.claude === 'running' ? openInCmux(null) : null;
@@ -964,7 +966,9 @@ function openSheet(pr, row) {
   icon.style.color = getComputedStyle(row.querySelector('.claude')).color; // the row's status colour, which lives on .pr
   const head = el('div', { className: 'sheet-head' });
   const meta = [...row.querySelectorAll('.info > span')].map((span) => span.textContent).join(' · ');
-  head.append(icon, el('p', { className: 'sheet-title', textContent: pr.title }), el('p', { className: 'sheet-meta', textContent: meta }));
+  const close = el('button', { type: 'button', className: 'sheet-close', ariaLabel: 'Close', onclick: () => sheet.close() });
+  close.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  head.append(icon, el('p', { className: 'sheet-title', textContent: pr.title }), close, el('p', { className: 'sheet-meta', textContent: meta }));
   const tldr = row.querySelector('.tldr')?.cloneNode(true);
   if (tldr) tldr.hidden = false;
   const buttons = el('div', { className: 'sheet-buttons' });
@@ -982,7 +986,7 @@ function openSheet(pr, row) {
   more.append(
     ...(pr.branch ? [act('Copy Branch', 'branch')] : []), act('Copy Link', 'link'),
     el('a', { href: `${pr.url}/files`, target: '_blank', textContent: 'Files' }), el('a', { href: `${pr.url}/checks`, target: '_blank', textContent: 'Checks' }),
-    act(snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore', 'ignore'),
+    Object.assign(act(snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore', 'ignore'), { className: snoozedUntil(pr) >= IGNORED ? '' : 'danger' }),
   );
   sheet.replaceChildren(
     el('div', { className: 'sheet-grab' }), head, el('p', { className: 'sheet-why', textContent: icon.title }), ...(tldr ? [tldr] : []),
@@ -1001,7 +1005,7 @@ function toast(text) {
   toastBox.textContent = text;
   toastBox.dataset.on = '';
   clearTimeout(toastBox.timer);
-  toastBox.timer = setTimeout(() => delete toastBox.dataset.on, 2000);
+  toastBox.timer = setTimeout(() => delete toastBox.dataset.on, 3000);
 }
 // sidak:// is no secure context, so WKWebView may lack the Clipboard API: copy from a selected textarea there.
 function copyText(text) {
@@ -1168,10 +1172,46 @@ addEventListener('wheel', ({ deltaX, deltaY }) => {
 }, { passive: true });
 // On a touch screen a sideways swipe does the same. A mostly vertical drag scrolls, and one that starts in a field is the field's.
 let touch = null;
+// On the phone a row takes its own swipes, like Mail's: left snoozes it until tomorrow, right skims it (an Inbox PR with Skim free).
+// Past 90 px it is armed (panel.html .pr[data-armed]); a swipe that starts on a row never changes the tab.
+const phoneUI = document.documentElement.hasAttribute('data-remote');
+let rowSwipe = null, swallowClick = false;
 addEventListener('touchstart', ({ touches, target }) => {
-  touch = touches.length === 1 && !target.closest('input') ? { x: touches[0].clientX, y: touches[0].clientY } : null;
+  const row = phoneUI && touches.length === 1 && target.closest('.pr');
+  rowSwipe = row ? { row, x: touches[0].clientX, y: touches[0].clientY, dx: 0, on: false } : null;
+  touch = !row && touches.length === 1 && !target.closest('input') ? { x: touches[0].clientX, y: touches[0].clientY } : null;
 }, { passive: true });
+addEventListener('touchmove', ({ touches: [t] }) => {
+  const s = rowSwipe;
+  if (!s) return;
+  const dx = t.clientX - s.x, dy = t.clientY - s.y;
+  if (!s.on) {
+    if (Math.abs(dy) > 10) return (rowSwipe = null);
+    if (Math.abs(dx) < 12) return;
+    s.on = true;
+  }
+  const skim = s.row.querySelector('.review[data-depth="quick"]:not(:disabled)');
+  s.dx = dx > 0 && !skim ? 0 : dx;
+  s.row.style.transform = `translateX(${s.dx}px)`;
+  s.row.dataset.swipe = s.dx < 0 ? 'left' : 'right';
+  s.row.toggleAttribute('data-armed', Math.abs(s.dx) > 90);
+}, { passive: true });
+addEventListener('click', (event) => { if (swallowClick) { swallowClick = false; event.preventDefault(); event.stopPropagation(); } }, true);
 addEventListener('touchend', ({ changedTouches: [end] }) => {
+  if (rowSwipe?.on) {
+    const { row, dx } = rowSwipe;
+    rowSwipe = null;
+    row.style.transform = '';
+    delete row.dataset.swipe;
+    row.removeAttribute('data-armed');
+    if (dx < -90) { toggleSnooze(row.dataset.key); toast('Snoozed until tomorrow'); }
+    else if (dx > 90) row.querySelector('.review[data-depth="quick"]')?.click();
+    // Then the tap iOS may send for the lift is not the row's (it would open the sheet).
+    swallowClick = true;
+    setTimeout(() => (swallowClick = false), 400);
+    return;
+  }
+  rowSwipe = null;
   if (!touch) return;
   const dx = end.clientX - touch.x, dy = end.clientY - touch.y;
   touch = null;

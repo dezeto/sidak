@@ -55,6 +55,33 @@
     new MutationObserver(() => { cancelAnimationFrame(queued); queued = requestAnimationFrame(edges); })
       .observe(list, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
     edges();
+    // Pull to refresh: pulled down 80 px from the top, the lift syncs (the footer's refresh button); the arrow turns as it comes.
+    const ptr = Object.assign(document.createElement('div'), { className: 'ptr' });
+    ptr.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>';
+    document.body.append(ptr);
+    let y0 = null, pulled = 0;
+    const free = () => !document.querySelector('#sheet[open]') && document.getElementById('settings-fold').hidden;
+    addEventListener('touchstart', (e) => { y0 = scrollY <= 0 && e.touches.length === 1 && free() ? e.touches[0].clientY : null; pulled = 0; }, { passive: true });
+    addEventListener('touchmove', (e) => {
+      if (y0 === null) return;
+      pulled = Math.max(0, e.touches[0].clientY - y0);
+      ptr.style.setProperty('--pull', Math.min(pulled, 120));
+      ptr.toggleAttribute('data-ready', pulled > 80);
+    }, { passive: true });
+    addEventListener('touchend', () => {
+      if (y0 !== null && pulled > 80) document.getElementById('refresh').click();
+      y0 = null;
+      ptr.style.setProperty('--pull', 0);
+      ptr.removeAttribute('data-ready');
+    }, { passive: true });
+    // Scrolled past the large title, a small one stays in a blurred bar at the top, as in iOS apps; a tap there scrolls back up.
+    const foot = document.getElementById('foot');
+    const nav = Object.assign(document.createElement('button'), { type: 'button', className: 'ios-nav', onclick: () => scrollTo({ top: 0, behavior: 'smooth' }) });
+    document.body.append(nav);
+    const title = () => { nav.dataset.title = foot.dataset.title ?? ''; };
+    new MutationObserver(title).observe(foot, { attributes: true, attributeFilter: ['data-title'] });
+    title();
+    addEventListener('scroll', () => document.documentElement.toggleAttribute('data-compact', scrollY > 56), { passive: true });
     // iOS Settings: a title with Done, then the rows in labelled groups on rounded cards. The rows move, not copies, so panel.js keeps
     // its handles on them.
     const settings = document.getElementById('settings');

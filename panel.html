@@ -152,6 +152,51 @@
   :root[data-remote] #search { font-size: 17px; }
   :root[data-remote]:has(#search:not(:placeholder-shown)) #foot::before { content: 'Results'; }
   :root[data-remote]:has(#search:not(:placeholder-shown)) .next { display: none; }
+  /* Sheet: an × at the title's right; Ignore in red. */
+  :root[data-remote] .sheet-head { grid-template-columns: 22px minmax(0, 1fr) 32px; }
+  .sheet-close { grid-column: 3; grid-row: 1 / span 2; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border-radius: 50%; background: rgba(127, 127, 127, 0.2); color: var(--lg-ink-muted); }
+  .sheet-close svg { width: 12px; height: 12px; }
+  :root[data-remote] #sheet .sheet-more .danger { color: var(--red); }
+  /* Merge stack as a real button by the stack's title. */
+  :root[data-remote] .stack > h2 .merge-stack { margin-left: auto; min-height: 32px; padding: 0 14px; border-radius: 16px; background: color-mix(in srgb, var(--lg-accent) 20%, transparent); font-size: 14px; font-weight: 600; letter-spacing: 0; }
+  /* Row swipes (panel.js): the row slides over a coloured panel that says what lifting does; it lights up once armed. */
+  :root[data-remote] .pr { position: relative; transition: background-color var(--lg-duration-fast), transform 0.25s var(--lg-easing-spring); }
+  :root[data-remote] .pr[data-swipe] { transition: none; }
+  :root[data-remote] :is(.column, .stack, details) { overflow-x: clip; }
+  :root[data-remote] .pr[data-swipe]::after {
+    position: absolute; top: 0; bottom: 0; width: 100vw; display: flex; align-items: center; padding: 0 22px; box-sizing: border-box;
+    color: #fff; font-size: 15px; font-weight: 600; opacity: 0.55;
+  }
+  :root[data-remote] .pr[data-swipe='left']::after { content: 'Snooze'; left: 100%; background: #ff9f0a; }
+  :root[data-remote] .pr[data-swipe='right']::after { content: 'Skim'; right: 100%; justify-content: flex-end; background: #248a3d; }
+  :root[data-remote] .pr[data-armed]::after { opacity: 1; }
+  /* Pull to refresh (app/remote.js): an arrow that fades in and turns as the list is pulled, green once a lift will sync. */
+  .ptr { display: none; }
+  :root[data-remote] .ptr {
+    display: grid; place-items: center; position: fixed; top: calc(env(safe-area-inset-top, 0px) + 6px); left: 50%; z-index: 5; width: 30px; height: 30px; margin-left: -15px;
+    color: var(--lg-ink-muted); opacity: calc(var(--pull, 0) / 80); transform: translateY(calc(var(--pull, 0) * 0.35px)) rotate(calc(var(--pull, 0) * 3deg)); pointer-events: none;
+  }
+  :root[data-remote] .ptr svg { width: 22px; height: 22px; }
+  :root[data-remote] .ptr[data-ready] { color: var(--lg-accent); }
+  /* The small title bar (app/remote.js), shown once the large title has scrolled away. */
+  .ios-nav { display: none; }
+  :root[data-remote] .ios-nav {
+    display: flex; align-items: flex-end; justify-content: center; position: fixed; top: 0; left: 0; right: 0; z-index: 5; box-sizing: border-box;
+    height: calc(env(safe-area-inset-top, 0px) + 44px); padding: 0 0 11px; border: 0; border-bottom: 0.5px solid var(--group-line);
+    background: color-mix(in srgb, var(--ambient) 70%, transparent); -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+    color: var(--lg-ink); font: inherit; font-size: 17px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity var(--lg-duration-fast);
+  }
+  :root[data-remote] .ios-nav::before { content: attr(data-title); }
+  :root[data-remote]:has(#search:not(:placeholder-shown)) .ios-nav::before { content: 'Results'; }
+  :root[data-remote][data-compact] .ios-nav { opacity: 1; pointer-events: auto; }
+  :root[data-remote][data-settings] .ios-nav { opacity: 0; pointer-events: none; }
+  /* An empty list: a quiet card with a check, not bare text. */
+  :root[data-remote] .empty { margin: 0 16px; padding: 28px 16px; border-radius: 22px; background: var(--group); color: var(--lg-ink-muted); font-size: 15px; text-align: center; }
+  :root[data-remote] .empty::before {
+    content: ''; display: block; width: 34px; height: 34px; margin: 0 auto 10px; background: var(--lg-accent);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
   :root[data-remote] #toast {
     top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;
