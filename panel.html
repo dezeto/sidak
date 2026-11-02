@@ -143,6 +143,8 @@
   :is(#tabs, .seg) button[aria-pressed='true'], .space[aria-pressed='true'] { background: var(--lg-bg-pressed); color: var(--lg-ink); box-shadow: var(--lg-highlight), 0 1px 3px rgba(0, 0, 0, 0.12); }
   .n { font-variant-numeric: tabular-nums; color: var(--lg-ink-muted); }
   #tabs .n[data-live] { color: var(--amber); }
+  /* An Inbox PR waiting on me more than a day: its wait, amber, opens the meta line. */
+  .info .overdue { color: var(--amber); font-weight: 600; }
   /* Inbox tab: a red dot beside the count while a PR I reviewed is back with new commits or a new request (a follow-up card). */
   body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after {
     content: ''; flex: none; align-self: flex-start; width: 6px; height: 6px; margin: 5px 0 0 -2px; border-radius: 50%; background: var(--dot-red);
@@ -545,6 +547,12 @@
   <div class="set">
     <span class="l">Auto per day</span>
     <input id="auto-cap" class="num" type="number" min="0" step="1" inputmode="numeric" placeholder="∞" aria-label="Auto reviews per day, empty for no limit" title="The most quick reviews Auto starts in a day; empty or 0: no limit" />
+  </div>
+  <div class="set">
+    <span class="l">Quiet hours</span>
+    <div class="seg" data-setting="quiet" role="group" aria-label="Quiet hours for Auto" title="Auto starts nothing in these hours; what waits starts when they end. Nights: 22:00–08:00">
+      <button type="button" value="off">Off</button><button type="button" value="night">Nights</button><button type="button" value="week">Nights + weekends</button>
+    </div>
   </div>
   <div class="set">
     <span class="l">Refresh every</span>

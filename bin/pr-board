@@ -213,6 +213,11 @@ import datetime, json, os, subprocess, sys, time
 settings_path, state_path, config_path = sys.argv[1:]
 settings, config = json.load(open(settings_path)), json.load(open(config_path))
 if not settings.get("auto", {}).get("on"): sys.exit(print("auto off"))
+# Quiet hours (settings.json quiet): night is 22:00-08:00, week adds Saturday and Sunday. What waits starts once they end.
+clock = datetime.datetime.now()
+quiet = settings.get("quiet", "off")
+if quiet in ("night", "week") and (clock.hour >= 22 or clock.hour < 8) or quiet == "week" and clock.weekday() >= 5:
+    sys.exit(print("auto on (quiet hours)"))
 if subprocess.run(["pgrep", "-x", "cmux"], capture_output=True).returncode: sys.exit(print("auto on (no cmux)"))
 state = json.load(open(state_path))
 now = time.time()

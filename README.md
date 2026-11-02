@@ -26,6 +26,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   The same goes for the author's pushback: a thread they answered and resolved with the code unchanged becomes a point not to make.
 - **Stacks**: your stacked PRs (each based on the branch of the one below) show as one group under the bottom PR's tab, joined by
   a line; **Merge stack** merges them all through GitHub's stacked merge once every part is approved and green.
+- **Quiet hours**: Auto starts nothing at night (22:00–08:00), or nights and weekends; what waits starts when they end.
+- **Overdue**: an Inbox PR waiting on you over a day opens its meta line with the wait in amber, and the Next line counts them.
 - **Smart depth**: Auto picks Deep instead of a Skim for a risky PR: one that touches a migration, auth or security code, or the
   feature flags, or changes more than 500 lines.
 - **Auto self-checks your own PRs first**: with Auto on, each PR you open ready or move out of draft gets a quick self-check (its

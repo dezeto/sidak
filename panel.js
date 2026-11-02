@@ -172,6 +172,12 @@ function toggleSnooze(key, until = Date.now() + 86400000) {
 const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]');
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const capBox = document.getElementById('auto-cap');
+const quietSeg = document.querySelector('#settings [data-setting="quiet"]');
+// Quiet hours, as pr-board auto reads them: nights 22:00-08:00, week adds the weekend.
+function quietNow(now = new Date()) {
+  const night = now.getHours() >= 22 || now.getHours() < 8;
+  return (['night', 'week'].includes(settings.quiet) && night) || (settings.quiet === 'week' && [0, 6].includes(now.getDay()));
+}
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
 const vipPeople = document.getElementById('vip-people');
@@ -216,7 +222,7 @@ function renderFoot() {
     Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
     settings.auto?.on && (settings.autoCap
       ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `${today.auto}/${settings.autoCap}`)
-      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)`)),
+      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`)),
     // Phone access on: so an open tunnel is never forgotten.
     phoneOn() && sign('i-phone', 'Phone access is on'),
   ].filter(Boolean));
@@ -231,6 +237,7 @@ function showSettings() {
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
   if (document.activeElement !== capBox) capBox.value = settings.autoCap || '';
+  for (const button of quietSeg.children) button.setAttribute('aria-pressed', button.value === (settings.quiet ?? 'off'));
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
   phoneSeg.parentElement.hidden = !config.remote?.team;
@@ -246,6 +253,7 @@ function showSettings() {
 pollSeg.onclick = ({ target }) => target.value && saveSettings({ pollMinutes: Number(target.value) });
 staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Number(target.value) });
 // Auto per day: a whole number, empty or 0 for no limit; saved on Enter or leaving the field.
+quietSeg.onclick = ({ target }) => target.value && saveSettings({ quiet: target.value });
 capBox.onchange = () => saveSettings({ autoCap: Math.max(0, Math.floor(Number(capBox.value) || 0)) });
 capBox.onkeydown = (event) => event.key === 'Enter' && capBox.blur();
 // Turning it on writes the picks as well, so the runs use the model and effort shown here.
@@ -398,6 +406,7 @@ function prRow(pr) {
   }
   row.oncontextmenu = (event) => openMenu(event, pr);
   row.dataset.key = `${repoOf(pr)}#${pr.number}`;
+  if (overdue(pr)) info.prepend(el('span', { className: 'overdue', textContent: `waiting ${ago(new Date(waitingSince(pr)).toISOString())}`, title: 'Waiting on you over a day' }));
   if (snoozedUntil(pr) >= IGNORED) info.append(...words('ignored'));
   else if (snoozedUntil(pr) > Date.now()) info.append(...words(`snoozed until ${new Date(snoozedUntil(pr)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`));
 
@@ -653,10 +662,18 @@ function reviewedColumn(prs) {
   return section;
 }
 
+// How long an Inbox PR has waited on me: since it came back after my review, else since my latest request, else its last update.
+// Over a day it is overdue: its card opens the meta line with the wait in amber, and the Next line counts them.
+const DAY = 86400000;
+const waitingSince = (pr) => pr.followUp?.since ?? Date.parse(pr.requestedAt ?? pr.updatedAt);
+// One folded away (snoozed, ignored, or stale and not a VIP's) is put aside on purpose, so it is never overdue.
+const overdue = (pr) => !pr.mine && pr.review !== 'DRAFT' && (!pr.claude || pr.claude === 'failed' || pr.followUp) && snoozedUntil(pr) <= Date.now()
+  && !(isStale(pr, settings.staleDays) && !isVip(pr, settings.vip)) && Date.now() - waitingSince(pr) > DAY;
+
 // Next: one line over every tab saying what to do now, a link to that PR. The Inbox PR waiting longest (VIPs first, no drafts), else my own PR
 // that needs me most (mineColumns has ranked Mine); no line when both are clear.
 function nextStep(inbox, mine) {
-  const since = (pr) => pr.followUp?.since ?? Date.parse(pr.requestedAt ?? pr.updatedAt);
+  const since = waitingSince;
   const review = inbox.filter((pr) => pr.review !== 'DRAFT').toSorted((a, b) => isVip(b, settings.vip) - isVip(a, settings.vip) || since(a) - since(b))[0];
   const fix = mine.find((pr) => pr.next.group === 'needs');
   const pr = review ?? fix;
@@ -666,7 +683,8 @@ function nextStep(inbox, mine) {
     ? [review.followUp ? 'Review again' : 'Review', `by ${review.author}${waited === 'now' ? '' : `, waiting ${waited}`}`]
     : ['Fix', fix.next.pill];
   const link = el('a', { className: 'next', href: pr.url, target: '_blank', title: pr.title });
-  link.append(el('b', { textContent: 'Next' }), el('span', { textContent: `${what[0]} ${pr.repo}#${pr.number} ${what[1]}` }));
+  const late = inbox.filter(overdue).length;
+  link.append(el('b', { textContent: 'Next' }), el('span', { textContent: `${what[0]} ${pr.repo}#${pr.number} ${what[1]}${late ? ` · ${late} waiting over a day` : ''}` }));
   return [link];
 }
 
