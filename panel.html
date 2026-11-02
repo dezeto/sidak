@@ -210,6 +210,19 @@
     -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M8 12l3 3 5-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
+  /* Phone tab counts are iOS badges: a small capsule, solid on the open tab; amber while reviews run; Inbox's turns red (in place of
+     the dot) while a PR I reviewed is back. */
+  :root[data-remote] #tabs .n {
+    display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+    border-radius: 9px; background: rgba(127, 127, 127, 0.24); color: var(--lg-ink); font-size: 11px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums;
+  }
+  :root[data-remote] #tabs button[aria-pressed='true'] .n { background: var(--lg-ink); color: var(--ambient); }
+  :root[data-remote] #tabs .n[data-live] { background: var(--amber); color: #1c1c1e; }
+  :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox'] .n { background: var(--dot-red); color: #fff; }
+  :root[data-remote] body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after { display: none; }
+  :root[data-remote] #tabs button { gap: 5px; padding: 0 2px; }
+  /* Reviewed is history, nothing to act on: no badge, so its word fits. */
+  :root[data-remote] #tabs button[value='Reviewed'] .n { display: none; }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */
   :root[data-remote] #toast {
     top: calc(env(safe-area-inset-top, 0px) + 8px); bottom: auto; z-index: 7; width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box; padding: 12px 20px; border-radius: 22px;
