@@ -67,30 +67,38 @@ let activeSpace = saved('space', null);
 // Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
 const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
 // The pickers sit in the settings card; the sliders button's tooltip names the current picks.
-// Settings: the sliders button unfolds a card under the header and folds it again; Esc folds it too. The fold's height springs
-// between 0 and the card's, so the list below moves with it rather than jumping, while the card fades and grows from 0.98 at its top;
-// a second press mid-way turns it around from where it is.
+// Settings: the footer's words raise a card over the bottom of the list, which blurs behind it (data-settings); Esc or a tap on
+// the list lowers it again. It rises 12 px from the footer as it fades in, and sinks back the same way.
 const settingsCard = document.getElementById('settings');
 const settingsFold = document.getElementById('settings-fold');
+const SHEET = [{ opacity: 0, transform: 'translateY(12px) scale(0.98)' }, {}];
 let folding = null;
 function toggleSettings(open = settingsFold.hidden) {
   if (!folding && settingsFold.hidden === !open) return;
   for (const pick of footConfig.children) pick.ariaExpanded = open;
-  const from = folding ? settingsFold.offsetHeight : open ? 0 : settingsCard.offsetHeight;
+  document.documentElement.toggleAttribute('data-settings', open);
   folding?.cancel();
   settingsFold.hidden = false;
-  if (!motion.matches) return void (settingsFold.hidden = !open);
-  // Sidak.app grows its popover to the open height now, not after the spring.
-  if (open) sendHeight(document.body.scrollHeight);
-  settingsFold.classList.add('folding');
-  folding = play(settingsFold, [{ height: `${from}px` }, { height: `${open ? settingsCard.offsetHeight : 0}px` }]);
-  play(settingsCard, open ? [{ opacity: 0, transform: 'scale(0.98)' }, {}] : [{}, { opacity: 0, transform: 'scale(0.98)' }]);
-  folding.onfinish = () => {
+  // While it is open the page is at least header, card and footer tall, so Sidak.app's popover has room for it over a short list.
+  const sheet = document.querySelector('header').offsetHeight + settingsCard.offsetHeight + document.getElementById('foot').offsetHeight + 8;
+  if (open) document.body.style.setProperty('--sheet', `${sheet}px`);
+  const done = () => {
     folding = null;
-    settingsFold.classList.remove('folding');
     settingsFold.hidden = !open;
+    if (!open) document.body.style.removeProperty('--sheet');
   };
+  // Sidak.app grows its popover now, not after the spring.
+  if (open) sendHeight(document.body.scrollHeight);
+  folding = play(settingsCard, open ? SHEET : [...SHEET].reverse(), open ? {} : { duration: parseFloat(token('--lg-duration-fast')), easing: 'ease-in' });
+  if (!folding) return done();
+  folding.onfinish = done;
 }
+list.addEventListener('click', (event) => {
+  if (settingsFold.hidden) return;
+  event.preventDefault();
+  event.stopPropagation();
+  toggleSettings(false);
+}, true);
 for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
   const key = seg.dataset.key;
   const show = () => {

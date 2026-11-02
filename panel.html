@@ -42,14 +42,14 @@
   /* Popup width (Arc copy); a pinned tab shows the same narrow list, centred. In Arc the page is the sheet: tinted glass over Canvas.
      A column at least the window's height, so the footer sits at the bottom under a short list too. */
   body {
-    display: flex; flex-direction: column; width: 440px; min-height: 100vh; margin: 0 auto;
+    display: flex; flex-direction: column; width: 440px; min-height: max(100vh, var(--sheet, 0px)); margin: 0 auto;
     font: 13px/1.35 -apple-system, system-ui, sans-serif; -webkit-font-smoothing: antialiased; color: var(--lg-ink); background: var(--lg-bg-primary);
     -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
   }
   /* Sidak.app (shim.js sets data-app) draws the glass behind a transparent page and sizes its popover to the page (panel.js sendHeight),
      so there the column is only as tall as its content. */
   :root[data-app], :root[data-app] body { background: transparent; }
-  :root[data-app] body { min-height: 0; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-app] body { min-height: var(--sheet, 0px); -webkit-backdrop-filter: none; backdrop-filter: none; }
   /* The panel fits its page, so a bounce at either end only shakes it. */
   :root[data-app] { overscroll-behavior: none; }
   @media (prefers-contrast: more) { :root[data-app] body { background: var(--lg-bg-primary); } }
@@ -140,14 +140,15 @@
   #tabs .n[data-live] { color: var(--amber); }
   @media (prefers-contrast: more) { :is(#tabs, .seg) button[aria-pressed='true'] { box-shadow: inset 0 0 0 1px CanvasText; } }
 
-  /* Settings: a glass card that unfolds out of the footer (a tap on its words), one line per setting. Its fold clips it while panel.js
-     animates the height; it spans the footer's row and drops the footer's small muted type. */
-  #settings-fold { flex: 0 0 100%; font-size: 13px; font-weight: 400; line-height: 1.35; color: var(--lg-ink); white-space: normal; font-variant-numeric: normal; }
+  /* Settings: a glass card that rises out of the footer (a tap on its words) over the bottom of the list, one line per setting,
+     without the footer's small muted type. The list blurs behind it. */
+  #settings-fold { position: absolute; inset: auto 14px 100%; font-size: 13px; font-weight: 400; line-height: 1.35; color: var(--lg-ink); white-space: normal; font-variant-numeric: normal; }
   #settings {
-    margin: -4px -6px 12px; padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
+    padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
     box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 100%;
   }
-  #settings-fold.folding { overflow: hidden; }
+  :root[data-settings] main { filter: blur(8px); opacity: 0.5; }
+  @media (prefers-reduced-motion: no-preference) { main { transition: filter var(--lg-duration-normal), opacity var(--lg-duration-normal); } }
   .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
   .set > .l { font-size: 12.5px; font-weight: 500; }
   .seg { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: var(--lg-bg-interactive); }
