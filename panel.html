@@ -353,7 +353,7 @@
   /* The open tab: a flat lighter fill that fits the 48 px pill (4 px inset, same round as the buttons), as in iOS 26 tab bars. */
   :root[data-remote] #tabs::before { background: rgba(127, 127, 127, 0.2); box-shadow: none; }
   @media (prefers-reduced-motion: reduce) { :root[data-remote] #tabs button[aria-pressed='true'] { background: rgba(127, 127, 127, 0.2); box-shadow: none; } }
-  :root[data-remote] #tabs::before { top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px - (var(--n, 1) - 1) * 2px) / var(--n, 1)); border-radius: 20px; }
+  :root[data-remote] #tabs::before { top: 4px; bottom: 4px; border-radius: 20px; } /* left, width: the open tab's measured place (above) */
   :root[data-remote] #sheet, :root[data-remote] #settings {
     background: var(--glass-strong); box-shadow: var(--glass-rim), var(--lg-shadow-high);
     -webkit-backdrop-filter: blur(40px) saturate(190%); backdrop-filter: blur(40px) saturate(190%);
