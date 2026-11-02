@@ -67,8 +67,19 @@
   :root[data-remote] .pr { -webkit-user-drag: none; }
   /* iOS: clear of the notch, the home bar and a landscape side; fields at 16 px so focusing one never zooms the page; a press shows. */
   :root[data-remote] body { min-height: 100dvh; padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
-  :root[data-remote] header { padding-top: max(14px, env(safe-area-inset-top, 0px)); }
-  :root[data-remote] #foot { padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)); }
+  /* Phone reach: the header's controls float at the bottom, where a thumb is, as an iOS 26 glass tab bar over the list; the footer
+     (settings, signs, sync) ends the list instead, and the page leaves room under it for the bar. */
+  /* No backdrop filter on the phone's body: one would make it the fixed bar's containing block instead of the screen. */
+  :root[data-remote] body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-remote] header, :root[data-remote][data-scrolled] header {
+    position: fixed; top: auto; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    bottom: max(12px, env(safe-area-inset-bottom, 0px)); z-index: 3; padding: 7px; border: 1px solid var(--lg-border-color); border-radius: 30px;
+    background: var(--lg-bg-toolbar); box-shadow: var(--lg-highlight), var(--lg-shadow-elevated);
+    -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  }
+  @media (prefers-contrast: more) { :root[data-remote] header { background: var(--lg-bg-primary); -webkit-backdrop-filter: none; backdrop-filter: none; } }
+  :root[data-remote] #foot, :root[data-remote][data-more] #foot { position: static; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-remote] .next { margin-top: 14px; }
   :root[data-remote] :is(#search, #vip, .num) { font-size: 16px; }
   :root[data-remote] .pr:active { background: var(--row-hover); }
   :root[data-remote] :is(.review, .more-menu, .glass, #tabs button, #foot .pick):active { transform: scale(0.95); }
@@ -79,6 +90,7 @@
     font-size: 13px; font-weight: 500; opacity: 0; transform: translate(-50%, 8px); pointer-events: none; transition: opacity var(--lg-duration-fast), transform var(--lg-duration-fast);
   }
   #toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
+  :root[data-remote] #toast { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   :root[data-remote] .tldr { grid-row: 4; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }
