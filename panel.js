@@ -93,8 +93,10 @@ function toggleSettings(open = settingsFold.hidden) {
   if (!folding) return done();
   folding.onfinish = done;
 }
-list.addEventListener('click', (event) => {
-  if (settingsFold.hidden) return;
+// The list takes no pointer while the card is up (panel.html), so a tap there lands on the page: anywhere outside the header and
+// the footer lowers the card.
+document.addEventListener('click', (event) => {
+  if (settingsFold.hidden || event.target.closest('header, #foot')) return;
   event.preventDefault();
   event.stopPropagation();
   toggleSettings(false);
@@ -166,7 +168,7 @@ function toggleSnooze(key) {
 // Refresh every, Hide after (the stale cut-off) and the VIP list sit in the settings card under model and effort.
 const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]');
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
-const capSeg = document.querySelector('#settings [data-setting="autoCap"]');
+const capBox = document.getElementById('auto-cap');
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
 const vipPeople = document.getElementById('vip-people');
@@ -208,7 +210,7 @@ function renderFoot() {
   const profile = settings.profile || config.defaultProfile;
   // The settings chip: what a click runs with, profile · model · effort, in one capsule.
   footConfig.replaceChildren(...[
-    Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick chip' }),
+    Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
     settings.auto?.on && (settings.autoCap
       ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `${today.auto}/${settings.autoCap}`)
       : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)`)),
@@ -225,7 +227,7 @@ function renderFoot() {
 function showSettings() {
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
-  for (const button of capSeg.children) button.setAttribute('aria-pressed', Number(button.value) === (settings.autoCap ?? 0));
+  if (document.activeElement !== capBox) capBox.value = settings.autoCap || '';
   const autoOn = Boolean(settings.auto?.on);
   for (const button of autoSeg.children) button.setAttribute('aria-pressed', (button.value === 'on') === autoOn);
   phoneSeg.parentElement.hidden = !config.remote?.team;
@@ -240,7 +242,9 @@ function showSettings() {
 }
 pollSeg.onclick = ({ target }) => target.value && saveSettings({ pollMinutes: Number(target.value) });
 staleSeg.onclick = ({ target }) => target.value && saveSettings({ staleDays: Number(target.value) });
-capSeg.onclick = ({ target }) => target.value && saveSettings({ autoCap: Number(target.value) });
+// Auto per day: a whole number, empty or 0 for no limit; saved on Enter or leaving the field.
+capBox.onchange = () => saveSettings({ autoCap: Math.max(0, Math.floor(Number(capBox.value) || 0)) });
+capBox.onkeydown = (event) => event.key === 'Enter' && capBox.blur();
 // Turning it on writes the picks as well, so the runs use the model and effort shown here.
 autoSeg.onclick = ({ target }) => target.value && saveSettings({ auto: { ...settings.auto, on: target.value === 'on' }, ...picks });
 profileSeg.onclick = ({ target }) => target.value && saveSettings({ profile: target.value });

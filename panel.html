@@ -147,12 +147,17 @@
     padding: 4px 16px 12px; border: 1px solid var(--lg-border-color); border-radius: var(--lg-radius-lg); background: var(--lg-bg-elevated);
     box-shadow: var(--lg-highlight), var(--lg-shadow-elevated); transform-origin: 50% 100%;
   }
-  :root[data-settings] main { filter: blur(8px); opacity: 0.5; }
+  /* Behind the settings the list is out of reach: no hover, no tooltips; a tap there only closes the card (panel.js). */
+  :root[data-settings] main { filter: blur(8px); opacity: 0.5; pointer-events: none; }
   @media (prefers-reduced-motion: no-preference) { main { transition: filter var(--lg-duration-normal), opacity var(--lg-duration-normal); } }
   .set { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 40px; }
   /* Two short settings to a row; one with three or more choices, and the VIP field, takes the whole row. */
   #settings { display: grid; grid-template-columns: 1fr 1fr; column-gap: 24px; }
   .set:has(> .seg > :nth-child(3)), .set.vip { grid-column: 1 / -1; }
+  /* A number setting: a small field shaped like the segmented controls; empty shows ∞. */
+  .num { width: 56px; height: 32px; box-sizing: border-box; padding: 0 10px; border: 0; border-radius: 16px; background: var(--lg-bg-interactive); color: var(--lg-ink); font: inherit; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; }
+  .num::placeholder { color: var(--lg-ink-muted); }
+  .num::-webkit-inner-spin-button, .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .set > .l { font-size: 12.5px; font-weight: 500; }
   .seg { display: flex; gap: 2px; padding: 2px; border-radius: 16px; background: var(--lg-bg-interactive); }
   .seg button { height: 28px; padding: 0 11px; border-radius: 14px; font-size: 11.5px; font-weight: 600; color: var(--lg-ink-muted); white-space: nowrap; }
@@ -358,8 +363,8 @@
   #status { min-width: 0; overflow: hidden; text-overflow: ellipsis; text-align: end; }
   #used { flex: none; margin-right: -8px; cursor: default; }
   #used::after { content: '·'; margin: 0 6px; }
-  #foot .chip { min-height: 26px; margin-block: -6px; padding: 0 11px; border-radius: 13px; background: var(--lg-bg-interactive); box-shadow: var(--lg-highlight); color: var(--lg-ink); }
-  #foot .chip:hover { background: var(--hover); }
+  #foot .run { min-height: 26px; margin-block: -6px; padding: 0 11px; border-radius: 13px; background: var(--lg-bg-interactive); box-shadow: var(--lg-highlight); color: var(--lg-ink); }
+  #foot .run:hover { background: var(--hover); }
   #foot .sign { display: inline-flex; align-items: center; gap: 4px; }
   #foot .sign svg { width: 14px; height: 14px; }
   #status[data-error='true'] { color: var(--red); }
@@ -516,9 +521,7 @@
   </div>
   <div class="set">
     <span class="l">Auto per day</span>
-    <div class="seg" data-setting="autoCap" role="group" aria-label="Auto reviews per day" title="The most quick reviews Auto starts in a day; None: no limit">
-      <button type="button" value="0">None</button><button type="button" value="5">5</button><button type="button" value="10">10</button><button type="button" value="20">20</button>
-    </div>
+    <input id="auto-cap" class="num" type="number" min="0" step="1" inputmode="numeric" placeholder="∞" aria-label="Auto reviews per day, empty for no limit" title="The most quick reviews Auto starts in a day; empty or 0: no limit" />
   </div>
   <div class="set">
     <span class="l">Refresh every</span>
