@@ -8,6 +8,30 @@
   const vv = window.visualViewport;
   const kb = () => document.documentElement.style.setProperty('--kb', `${Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop))}px`);
   if (vv) { vv.addEventListener('resize', kb); vv.addEventListener('scroll', kb); }
+  // iOS controls in the settings: an Off/On choice becomes a native switch, one of three or more a native picker (a select). Each
+  // drives its segmented control's buttons, which stay the source of truth (hidden by panel.html, .seg.native).
+  addEventListener('DOMContentLoaded', () => {
+    for (const seg of document.querySelectorAll('#settings .seg')) {
+      const values = [...seg.querySelectorAll('button')].map((b) => b.value);
+      const isSwitch = values.join() === 'off,on';
+      if (!isSwitch && values.length < 3) continue;
+      const ctl = document.createElement(isSwitch ? 'input' : 'select');
+      if (isSwitch) Object.assign(ctl, { type: 'checkbox' }).setAttribute('switch', '');
+      else for (const b of seg.querySelectorAll('button')) ctl.append(new Option(b.textContent, b.value));
+      ctl.className = isSwitch ? 'ios-switch' : 'ios-select';
+      ctl.setAttribute('aria-label', seg.getAttribute('aria-label'));
+      const sync = () => {
+        const on = seg.querySelector('[aria-pressed="true"]');
+        if (isSwitch) ctl.checked = on?.value === 'on';
+        else if (on) ctl.value = on.value;
+      };
+      new MutationObserver(sync).observe(seg, { subtree: true, attributes: true, attributeFilter: ['aria-pressed'] });
+      ctl.onchange = () => seg.querySelector(`button[value="${isSwitch ? (ctl.checked ? 'on' : 'off') : ctl.value}"]`)?.click();
+      seg.classList.add('native');
+      seg.after(ctl);
+      sync();
+    }
+  });
   const changed = new Set();
   // The Mac's lists, refetched every minute and when the phone comes back to the tab; the page's own keys (view, tab, snooze picks)
   // stay on the phone.

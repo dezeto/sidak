@@ -73,7 +73,7 @@
   /* Phone reach: the header's controls float at the bottom, where a thumb is, as an iOS 26 glass tab bar over the list; the footer
      (settings, signs, sync) ends the list instead, and the page leaves room under it for the bar. */
   /* No backdrop filter on the phone's body: one would make it the fixed bar's containing block instead of the screen. */
-  :root[data-remote] body { padding-top: env(safe-area-inset-top, 0px); padding-bottom: calc(128px + env(safe-area-inset-bottom, 0px)); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  :root[data-remote] body { padding-top: calc(env(safe-area-inset-top, 0px) + 92px); padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); -webkit-backdrop-filter: none; backdrop-filter: none; }
   :root[data-remote] header, :root[data-remote][data-scrolled] header {
     position: fixed; top: auto; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
     bottom: max(12px, env(safe-area-inset-bottom, 0px), calc(var(--kb, 0px) + 8px)); z-index: 3; padding: 7px; border: 1px solid var(--lg-border-color); border-radius: 30px;
@@ -81,20 +81,51 @@
     -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
   }
   @media (prefers-contrast: more) { :root[data-remote] header { background: var(--lg-bg-primary); -webkit-backdrop-filter: none; backdrop-filter: none; } }
-  /* The footer (settings, signs, sync) stays put as a thin glass strip just above the bar. The glass is a ::before: a backdrop
-     filter on #foot itself would trap the fixed settings sheet inside it. Hidden while search has the keyboard. */
+  /* iOS large title (the open tab, panel.js markActive), the settings chip at its right; under them one quiet line: sync time,
+     tokens, the on signs and refresh. It is the footer, moved to the top of the page, and scrolls away with the list. */
   :root[data-remote] #foot, :root[data-remote][data-more] #foot {
-    position: fixed; left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
-    bottom: calc(max(12px, env(safe-area-inset-bottom, 0px)) + 56px); z-index: 4; flex-wrap: nowrap; justify-content: space-between;
-    min-height: 36px; box-sizing: border-box; padding: 0 16px; background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none;
+    position: absolute; top: 0; left: 0; right: 0; bottom: auto; z-index: 4; flex-wrap: wrap; gap: 4px 8px;
+    padding: calc(env(safe-area-inset-top, 0px) + 12px) max(20px, env(safe-area-inset-right, 0px)) 0 max(20px, env(safe-area-inset-left, 0px));
+    background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-size: 13px; line-height: 18px;
   }
-  :root[data-remote] #foot::before {
-    content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 18px; background: var(--glass); box-shadow: var(--glass-rim);
-    -webkit-backdrop-filter: blur(5px) saturate(180%); backdrop-filter: blur(5px) saturate(180%);
+  :root[data-remote] #foot::before { content: attr(data-title); order: 0; flex: 1 1 auto; font-size: 34px; font-weight: 700; line-height: 41px; color: var(--lg-ink); }
+  :root[data-remote] #foot-config { display: contents; }
+  :root[data-remote] #foot .run { order: 1; min-height: 34px; margin: 0; padding: 0 14px; border-radius: 17px; font-size: 14px; font-weight: 600; }
+  :root[data-remote] #foot::after { content: ''; order: 2; flex-basis: 100%; }
+  :root[data-remote] #status { order: 3; }
+  :root[data-remote] #used { order: 4; margin: 0; }
+  :root[data-remote] #used::before { content: '·'; margin-right: 8px; }
+  :root[data-remote] #used::after { content: none; }
+  :root[data-remote][data-settings] #foot::before { filter: blur(8px); opacity: 0.5; }
+  :root[data-remote] #foot .sign { order: 5; min-height: 18px; margin: 0; }
+  :root[data-remote] #refresh { order: 6; width: 32px; height: 32px; margin: -7px -8px -7px auto; }
+  /* Groups, like iOS Settings: each section's rows on one rounded card, hairlines between them; section labels as titles. */
+  :root[data-remote] { --group: #fff; --group-line: rgba(60, 60, 67, 0.18); }
+  @media (prefers-color-scheme: dark) { :root[data-remote] { --group: #1c1c1e; --group-line: rgba(84, 84, 88, 0.6); } }
+  :root[data-remote] :is(.column, .stack) > h2 { padding: 22px 20px 8px; font-size: 20px; font-weight: 700; line-height: 25px; letter-spacing: 0; color: var(--lg-ink); }
+  :root[data-remote] :is(.column, .stack) > h2::after, :root[data-remote] details.stale > summary::after { display: none; }
+  :root[data-remote] .pr { margin: 0 16px; padding: 12px 14px; background-color: var(--group); }
+  :root[data-remote] .pr + .pr { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
+  :root[data-remote] :not(.pr) + .pr { border-top-left-radius: 22px; border-top-right-radius: 22px; }
+  :root[data-remote] .pr:not(:has(+ .pr)) { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
+  :root[data-remote] details.stale > summary { margin: 22px 16px 0; padding: 0 16px; min-height: 50px; border-radius: 22px; background: var(--group); font-size: 15px; font-weight: 600; color: var(--lg-ink); }
+  :root[data-remote] details.stale[open] > summary { margin-bottom: 8px; }
+  /* Next: a card at the top, what to do now; a tap opens that PR's sheet. */
+  :root[data-remote] .next { flex-direction: column; gap: 3px; margin: 6px 16px 0; padding: 14px 16px; border-radius: 22px; background: var(--group); font-size: 13px; line-height: 18px; }
+  :root[data-remote] .next b { font-size: 12px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase; color: var(--lg-accent); }
+  :root[data-remote] .next span { white-space: normal; font-size: 15px; font-weight: 600; line-height: 20px; color: var(--lg-ink); }
+  /* The sheet's other actions as an iOS list. */
+  :root[data-remote] .sheet-more { flex-direction: column; gap: 0; padding: 0; border: 0; border-radius: 20px; background: rgba(127, 127, 127, 0.12); overflow: hidden; }
+  :root[data-remote] #sheet .sheet-more :is(a, button) { display: flex; align-items: center; height: 48px; padding: 0 16px; border-radius: 0; background: none; box-shadow: none; font-size: 16px; text-align: start; }
+  :root[data-remote] .sheet-more > * + * { border-top: 0.5px solid var(--group-line); }
+  /* Settings: native iOS switches and pickers (app/remote.js) in place of the segmented controls they drive. */
+  .seg.native { display: none; }
+  .ios-switch { margin: 0; accent-color: #30d158; }
+  .ios-select {
+    -webkit-appearance: none; appearance: none; margin: 0 -4px 0 auto; padding: 6px 22px 6px 6px; border: 0; background: none; color: var(--lg-ink-muted); font: inherit; font-size: 16px; text-align: end;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e93' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 9l4-4 4 4M8 15l4 4 4-4'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 2px center; background-size: 14px;
   }
-  :root[data-remote] #foot-config { margin-right: 0; }
-  :root[data-remote][data-settings] #foot::before { visibility: hidden; }
-  :root[data-remote]:has(.search:focus-within) #foot { display: none; }
   :root[data-remote] .next { margin-top: 14px; }
   :root[data-remote] :is(#search, #vip, .num) { font-size: 16px; }
   :root[data-remote] .pr:active { background: var(--row-hover); }

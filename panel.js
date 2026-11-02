@@ -614,6 +614,8 @@ function markActive(glide = false) {
   tabsBar.style.setProperty('--n', shown.length || 1);
   tabsBar.style.setProperty('--i', Math.max(shown.findIndex((button) => button.value === tab), 0));
   tabsBar.dataset.glide = glide ? 'move' : 'still';
+  // The phone's large title (panel.html #foot::before) is the open tab.
+  document.getElementById('foot').dataset.title = tab;
 }
 
 // Both profiles' tabs sit in the bar; the CSS shows the current profile's.
@@ -716,6 +718,11 @@ function nextStep(inbox, mine) {
     ? [review.followUp ? 'Review again' : 'Review', `by ${review.author}${waited === 'now' ? '' : `, waiting ${waited}`}`]
     : ['Fix', fix.next.pill];
   const link = el('a', { className: 'next', href: pr.url, target: '_blank', title: pr.title });
+  // On the phone the Next card opens that PR's sheet, as its row does.
+  link.onclick = (event) => {
+    const row = document.documentElement.hasAttribute('data-remote') && [...list.querySelectorAll('.pr')].find((r) => r.href === pr.url);
+    if (row) { event.preventDefault(); openSheet(pr, row); }
+  };
   const late = inbox.filter(overdue).length;
   link.append(el('b', { textContent: 'Next' }), el('span', { textContent: `${what[0]} ${pr.repo}#${pr.number} ${what[1]}${late ? ` · ${late} waiting over a day` : ''}` }));
   return [link];
