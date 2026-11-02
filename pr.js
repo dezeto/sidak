@@ -80,7 +80,7 @@ function authorState(pr, now = Date.now()) {
     pill: pending.length ? `awaiting ${names(pending)}` : 'no reviewers',
     reason: by('APPROVED').length ? approved : `no reviews yet, ${updated}`,
     action: pending.length ? 'nudge' : null,
-    icon: pending.length ? 'i-hourglass' : 'i-person',
+    icon: pending.length ? 'i-hourglass' : 'i-person-add',
   };
 }
 

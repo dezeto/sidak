@@ -99,7 +99,7 @@ assert.equal(state(red).rank, 1);
 const requested = { reviewRequests: { nodes: ['a', 'b', 'c'].map((login) => ({ requestedReviewer: user(login) })) } };
 assert.deepEqual(state(requested), { group: 'waiting', rank: 4, pill: 'awaiting a, b +1', reason: 'no reviews yet, updated 2 d ago', action: 'nudge', icon: 'i-hourglass' });
 assert.equal(authorState(pr(requested), updated + 3600000).reason, 'no reviews yet, updated today');
-assert.deepEqual(state({}), { group: 'waiting', rank: 4, pill: 'no reviewers', reason: 'no reviews yet, updated 2 d ago', action: null, icon: 'i-person' });
+assert.deepEqual(state({}), { group: 'waiting', rank: 4, pill: 'no reviewers', reason: 'no reviews yet, updated 2 d ago', action: null, icon: 'i-person-add' });
 const approvals = { reviewDecision: 'APPROVED', latestOpinionatedReviews: { nodes: [review('APPROVED', 'j'), review('APPROVED', 'c')] } };
 assert.deepEqual(state({ ...green, ...approvals }), { group: 'ready', rank: 5, pill: 'ready to merge', reason: 'approved by j, c', action: 'merge', icon: 'i-done' });
 assert.equal(state(approvals).action, null); // approved, checks not green yet: nothing to press
