@@ -672,6 +672,23 @@ function nextStep(inbox, mine) {
 
 // Mine, one tab per authorState group (pr.js); worst blocker first, then oldest first.
 const MINE_TABS = [['needs', 'To do', 'i-person'], ['waiting', 'Waiting', 'i-pr'], ['ready', 'Ready', 'i-done']];
+// Waiting splits by what each PR waits on (authorState icon): asked reviewers, nobody asked yet, then checks on an approved one.
+const WAITING_SECTIONS = [['i-hourglass', 'Awaiting reviewers'], ['i-person-add', 'No reviewers'], ['i-clock', 'Awaiting checks']];
+function waitingColumn(title, iconId, prs, stale) {
+  const groups = WAITING_SECTIONS.map(([id, label]) => [label, prs.filter((pr) => pr.next.icon === id)]).filter(([, rows]) => rows.length);
+  const [[first, firstRows] = [title, []], ...rest] = groups;
+  const section = column(title, iconId, firstRows, 'mine', stale);
+  section.querySelector(':scope > h2 > span:not(.count)').textContent = first;
+  // The stale fold stays last.
+  const fold = section.querySelector(':scope > details.stale');
+  for (const [label, rows] of rest) {
+    const heading = el('h2');
+    heading.append(el('span', { textContent: label }), el('span', { className: 'count', textContent: rows.length }));
+    section.insertBefore(heading, fold);
+    for (const row of rows.map(prRow)) section.insertBefore(row, fold);
+  }
+  return section;
+}
 function mineColumns(prs, stale) {
   for (const pr of prs) Object.assign(pr, { mine: true, next: authorState(pr) });
   prs.sort((a, b) => a.next.rank - b.next.rank || Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
@@ -679,7 +696,8 @@ function mineColumns(prs, stale) {
     // Drafts are mine to move too, so they fold at the end of To do (the stale fold class: search opens it), out of its count.
     const rows = prs.filter((pr) => pr.next.group === group || (group === 'needs' && pr.next.group === 'draft'));
     const fresh = rows.filter((pr) => !stale(pr));
-    const section = column(title, iconId, fresh.filter((pr) => pr.next.group !== 'draft'), 'mine', rows.filter(stale));
+    const cards = fresh.filter((pr) => pr.next.group !== 'draft');
+    const section = group === 'waiting' ? waitingColumn(title, iconId, cards, rows.filter(stale)) : column(title, iconId, cards, 'mine', rows.filter(stale));
     const drafts = fresh.filter((pr) => pr.next.group === 'draft');
     if (drafts.length) section.insertBefore(staleFold(drafts, 'Drafts', 'stale drafts'), section.querySelector(':scope > details.stale'));
     return section;
