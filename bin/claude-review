@@ -134,9 +134,10 @@ if not os.path.exists(path): sys.exit()
 lessons = [json.loads(line) for line in open(path) if line.strip()][-25:]
 if not lessons: sys.exit()
 cut = lambda text: " ".join(text.split())[:400]
-print(f"\n\n# How {login} corrected earlier reviews\nThese inline comments from your earlier reviews were changed by {login} after posting. Treat them as the reviewer's taste: do not raise points like the deleted ones, and phrase findings the way the rewritten ones read.")
+print(f"\n\n# How earlier reviews were corrected\nThese inline comments from your earlier reviews were corrected after posting: deleted or rewritten by {login}, or pushed back by the PR's author and resolved with the code unchanged. Treat them as the reviewer's and the team's taste: do not raise points like the deleted or pushed-back ones, and phrase findings the way the rewritten ones read.")
 for lesson in lessons:
     if lesson["kind"] == "deleted": print(f"- Deleted ({lesson['pr']}, {lesson['path']}): {cut(lesson['before'])}")
+    elif lesson["kind"] == "pushback": print(f"- Pushed back ({lesson['pr']}, {lesson['path']}): you said \"{cut(lesson['before'])}\"; the author replied \"{cut(lesson['reply'])}\" and it was resolved unchanged")
     else: print(f"- Rewritten ({lesson['pr']}, {lesson['path']}): was \"{cut(lesson['before'])}\" -> now \"{cut(lesson['after'])}\"")
 PY
 cd "$wt"

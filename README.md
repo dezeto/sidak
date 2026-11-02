@@ -23,6 +23,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Next** line on top: the Inbox PR waiting on you longest (VIPs first), else your own PR that needs you most. A tap opens it.
 - **Learns from your corrections**: when you delete or reword one of Claude's inline comments after a review posts, the board
   notices within the hour (for a week) and the next reviews get it as taste: no points like the deleted ones, phrasing like yours.
+  The same goes for the author's pushback: a thread they answered and resolved with the code unchanged becomes a point not to make.
 - **Auto self-checks your own PRs first**: with Auto on, each PR you open ready or move out of draft gets a quick self-check (its
   fix list) ahead of anyone else's review; approved ones are skipped. Push to it and, 10 quiet minutes later, Auto checks it
   again; Nudge waits for that fix list, so reviewers get a head your own check has read.
