@@ -51,9 +51,8 @@ final class GlassPanel: NSPanel {
 }
 
 final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandlerWithReply, WKUIDelegate, WKNavigationDelegate, NSWindowDelegate {
-  // One menu-bar item: the inbox count; Mine is a view inside the board (Tab or a sideways swipe).
+  // One menu-bar item: the ring (gauge); Mine is a view inside the board (Tab or a sideways swipe).
   var item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-  var title = ""
   var web: WKWebView!
 
   func applicationDidFinishLaunching(_ n: Notification) {
@@ -103,10 +102,6 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     item.button?.image = gauge()
     item.button?.imagePosition = .imageLeading
-    // A black capsule in a light or dark menu bar: the gauge and the title draw white on it.
-    item.button?.wantsLayer = true
-    item.button?.layer?.backgroundColor = NSColor(srgbRed: 10 / 255, green: 10 / 255, blue: 12 / 255, alpha: 1).cgColor
-    item.button?.layer?.cornerRadius = 11
     showTitle()
     item.button?.target = self
     item.button?.action = #selector(toggle)
@@ -116,7 +111,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   }
 
   // The ring as a battery gauge: filled by the reviewed share of the queue, an amber segment for runs in progress,
-  // red when under a fifth is done. Not a template (it carries colour); white, on the black pill.
+  // red when under a fifth is done. Not a template (it carries colour); the rest in the menu bar's text colour (labelColor).
   var toReview = 0, running = 0, reviewed = 0, autoOn = false
   func gauge() -> NSImage {
     let (todo, live, done, auto) = (toReview, running, reviewed, autoOn)
@@ -127,13 +122,13 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
         p.appendArc(withCenter: NSPoint(x: 8, y: 8), radius: 5.5, startAngle: 90 - from * 360, endAngle: 90 - to * 360, clockwise: true)
         p.lineWidth = 2; p.lineCapStyle = .butt; color.setStroke(); p.stroke()
       }
-      arc(0, 0.9999, NSColor.white.withAlphaComponent(0.25))
+      arc(0, 0.9999, NSColor.labelColor.withAlphaComponent(0.25))
       let fill = CGFloat(done) / CGFloat(total), run = CGFloat(live) / CGFloat(total)
-      if fill > 0 { arc(0, fill, todo > 0 && fill < 0.2 ? .systemRed : .white) }
+      if fill > 0 { arc(0, fill, todo > 0 && fill < 0.2 ? .systemRed : .labelColor) }
       if run > 0 { arc(fill, fill + run, .systemOrange) }
       // Auto review on: an "A" in the middle of the ring, since its runs spend money without a click.
       if auto {
-        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 7.5, weight: .bold), .foregroundColor: NSColor.white]
+        let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 7.5, weight: .bold), .foregroundColor: NSColor.labelColor]
         let a = NSAttributedString(string: "A", attributes: attrs)
         let size = a.size()
         a.draw(at: NSPoint(x: 8 - size.width / 2, y: 8 - size.height / 2))
@@ -367,21 +362,22 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   var runs: [(key: String, quick: Bool, at: Double)] = []
   var runTick: Timer?
   func showTitle() {
-    var text = title
+    // Just the ring: the count is in the panel and the tooltip.
+    var text = ""
     if island, let run = runs.max(by: { $0.at < $1.at }) {
       let secs = max(0, Int(Date().timeIntervalSince1970 - run.at / 1000))
       let name = run.key.split(separator: "/").last.map(String.init) ?? run.key
       text = " \(name) \(run.quick ? "Skim" : "Deep") \(secs / 60):\(String(format: "%02d", secs % 60))" + (runs.count > 1 ? " +\(runs.count - 1)" : "")
       if runTick == nil { runTick = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in self.showTitle() } }
     } else { runTick?.invalidate(); runTick = nil }
-    item.button?.attributedTitle = NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.white, .font: NSFont.menuBarFont(ofSize: 0)])
+    item.button?.attributedTitle = NSAttributedString(string: text, attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.menuBarFont(ofSize: 0)])
   }
 
   // "<to review> ↻<running>" beside the icon, parsed from `pr-board board` (indented lines under each section).
   // Then one auto-review tick (`pr-board auto`); while auto mode is on the title reads "A <to review>", since its runs spend money.
   func counts() {
     DispatchQueue.global().async {
-      let (text, status) = self.zsh("bin/pr-board board")
+      let (text, _) = self.zsh("bin/pr-board board")
       var section = "", toReview = 0, running = 0, reviewed = 0
       for line in text.split(separator: "\n") {
         if !line.hasPrefix("  ") { section = String(line); continue }
@@ -391,10 +387,8 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       let auto = self.zsh("bin/pr-board auto").0.split(separator: "\n").first.map(String.init) ?? ""
       NSLog("auto: %@", auto)
       let autoOn = auto.hasPrefix("auto on")
-      let title = status == 0 ? " \(toReview)" : ""
       DispatchQueue.main.async {
         (self.toReview, self.running, self.reviewed, self.autoOn) = (toReview, running, reviewed, autoOn)
-        self.title = title
         self.showTitle()
         self.item.button?.image = self.gauge()
         self.item.button?.toolTip = "\(toReview) to review, \(running) running, \(reviewed) reviewed" + (autoOn ? " · \(auto)" : "")
