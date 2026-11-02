@@ -419,7 +419,10 @@ function prRow(pr) {
       show();
     };
   }
-  row.oncontextmenu = (event) => openMenu(event, pr);
+  // On the phone a tap (or a long press) opens the card's sheet instead of the PR: the buttons live there.
+  const phone = document.documentElement.hasAttribute('data-remote');
+  row.oncontextmenu = (event) => (phone ? (event.preventDefault(), openSheet(pr, row)) : openMenu(event, pr));
+  if (phone) row.addEventListener('click', (event) => event.defaultPrevented || (event.preventDefault(), openSheet(pr, row)));
   row.draggable = false;
   const more = el('button', { type: 'button', className: 'more-menu', textContent: '⋯', ariaLabel: 'More: Zed, branch, files, checks, link, ignore' });
   more.onclick = (event) => {
@@ -927,6 +930,10 @@ menu.onclick = ({ target }) => {
   const action = target.closest('[data-do]')?.dataset.do;
   if (!action) return;
   menu.hidePopover();
+  menuAction(action);
+};
+// One menu action on menuPr, from the card menu or the phone's sheet.
+function menuAction(action) {
   if (action === 'branch' || action === 'link') {
     copyText(action === 'branch' ? menuPr.branch : menuPr.url);
     toast(action === 'branch' ? `Copied ${menuPr.branch}` : 'Copied the link');
@@ -939,7 +946,48 @@ menu.onclick = ({ target }) => {
     const error = chrome.runtime.lastError?.message ?? (reply?.ok ? null : reply?.error ?? 'no reply');
     if (error) alert(`Could not open Zed:\n${error}\nCheck that the zed CLI is installed (zed: install cli in Zed), then try again.`);
   });
-};
+}
+
+// The phone's card sheet (panel.html #sheet): the card's icon, title and meta, what it waits on, its TL;DR, Open PR, the card's own buttons
+// (each tap runs the card's hidden button, so Skim / Deep / Fix / Nudge / Merge behave exactly as on the Mac), then the menu's actions.
+const sheet = document.getElementById('sheet');
+function openSheet(pr, row) {
+  menuPr = pr;
+  const icon = row.querySelector('.claude').cloneNode(true);
+  icon.style.color = getComputedStyle(row.querySelector('.claude')).color; // the row's status colour, which lives on .pr
+  const head = el('div', { className: 'sheet-head' });
+  const meta = [...row.querySelectorAll('.info > span')].map((span) => span.textContent).join(' · ');
+  head.append(icon, el('p', { className: 'sheet-title', textContent: pr.title }), el('p', { className: 'sheet-meta', textContent: meta }));
+  const tldr = row.querySelector('.tldr')?.cloneNode(true);
+  if (tldr) tldr.hidden = false;
+  const buttons = el('div', { className: 'sheet-buttons' });
+  for (const button of row.querySelectorAll('.actions .review')) {
+    const proxy = el('button', { type: 'button', className: button.className, textContent: button.firstChild.data, disabled: button.disabled, title: button.title });
+    proxy.dataset.depth = button.dataset.depth;
+    proxy.onclick = () => {
+      sheet.close();
+      button.click();
+    };
+    buttons.append(proxy);
+  }
+  const more = el('div', { className: 'sheet-more' });
+  const act = (label, action) => Object.assign(el('button', { type: 'button', textContent: label }), { onclick: () => { sheet.close(); menuAction(action); } });
+  more.append(
+    ...(pr.branch ? [act('Copy Branch', 'branch')] : []), act('Copy Link', 'link'),
+    el('a', { href: `${pr.url}/files`, target: '_blank', textContent: 'Files' }), el('a', { href: `${pr.url}/checks`, target: '_blank', textContent: 'Checks' }),
+    act(snoozedUntil(pr) >= IGNORED ? 'Stop Ignoring' : 'Ignore', 'ignore'),
+  );
+  sheet.replaceChildren(
+    el('div', { className: 'sheet-grab' }), head, el('p', { className: 'sheet-why', textContent: icon.title }), ...(tldr ? [tldr] : []),
+    el('a', { className: 'open', href: pr.url, target: '_blank', textContent: 'Open PR' }), ...(buttons.children.length ? [buttons] : []), more,
+  );
+  sheet.showModal();
+}
+// A tap above the sheet (on its backdrop) or a swipe down closes it; the sheet's own padding is the sheet, so it checks the spot.
+sheet.addEventListener('click', ({ clientY }) => clientY < sheet.getBoundingClientRect().top && sheet.close());
+let sheetTouch = null;
+sheet.addEventListener('touchstart', ({ touches }) => { sheetTouch = sheet.scrollTop === 0 ? touches[0].clientY : null; }, { passive: true });
+sheet.addEventListener('touchend', ({ changedTouches }) => { if (sheetTouch !== null && changedTouches[0].clientY - sheetTouch > 70) sheet.close(); }, { passive: true });
 // A note for two seconds at the bottom: on the phone what a tapped status icon means (no hover there), and Copied after a copy.
 const toastBox = document.body.appendChild(el('div', { id: 'toast', role: 'status' }));
 function toast(text) {

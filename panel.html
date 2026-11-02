@@ -13,6 +13,8 @@
     --accent: #5b8def;
     --hover: color-mix(in srgb, var(--lg-ink) 10%, transparent);
     --row-hover: var(--lg-bg-interactive);
+    /* The phone's sheets: nearly solid, so the list and the tab bar never read through their text. */
+    --sheet-bg: rgba(248, 248, 250, 0.97);
     --green: #1a7f37;
     --red: #cf222e;
     --amber: #9a6700;
@@ -35,6 +37,7 @@
       --gold: #e3b341;
       --dot-green: #2bb45a;
       --row-hover: rgba(255, 255, 255, 0.06);
+      --sheet-bg: rgba(28, 28, 32, 0.97);
     }
   }
   /* Never sideways: the slide after a swipe (panel.js slideIn) would widen the page, and the rest of the swipe would scroll it. */
@@ -92,6 +95,44 @@
   #toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
   :root[data-remote] #toast { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
   :root[data-remote] .tldr { grid-row: 4; }
+  /* Phone cards are compact rows like Mail's: the title on up to two lines, no buttons; a tap opens the card's sheet. */
+  :root[data-remote] .pr .actions, :root[data-remote] .more-menu { display: none; }
+  :root[data-remote] .title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
+  :root[data-remote] .pr { padding-block: 10px; }
+  /* The card's sheet (panel.js openSheet), an iOS action sheet in thumb reach: what the PR is and waits on, its TL;DR, Open PR,
+     its buttons at full size, then the menu's. A swipe down or a tap outside closes it. */
+  #sheet {
+    position: fixed; inset: auto 0 0; width: auto; max-width: 560px; max-height: 85dvh; margin: 0 auto; box-sizing: border-box; overflow-y: auto;
+    padding: 8px max(18px, env(safe-area-inset-right, 0px)) calc(18px + env(safe-area-inset-bottom, 0px)) max(18px, env(safe-area-inset-left, 0px));
+    border: 0; border-radius: 30px 30px 0 0; background: var(--sheet-bg); box-shadow: var(--lg-highlight), var(--lg-shadow-high); color: var(--lg-ink);
+    -webkit-backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate)); backdrop-filter: blur(var(--lg-blur-lg)) saturate(var(--lg-saturate));
+  }
+  #sheet::backdrop { background: var(--lg-bg-scrim); }
+  @media (prefers-reduced-motion: no-preference) {
+    #sheet[open] { animation: sheet-up var(--lg-duration-normal) var(--lg-easing-spring); }
+    @keyframes sheet-up { from { transform: translateY(100%); } }
+  }
+  .sheet-grab { width: 36px; height: 5px; margin: 0 auto 14px; border-radius: 3px; background: var(--lg-border-color); }
+  .sheet-head { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 3px 12px; align-items: start; }
+  .sheet-head .claude { grid-row: 1 / span 2; margin-top: 1px; pointer-events: none; }
+  .sheet-title { margin: 0; font-size: 16px; font-weight: 650; line-height: 21px; }
+  .sheet-meta { margin: 0; font-size: 13px; color: var(--lg-ink-muted); }
+  .sheet-why { margin: 10px 0 0; font-size: 13px; color: var(--lg-ink); }
+  #sheet .tldr { margin: 12px 0 0; font-size: 13px; line-height: 18px; }
+  .sheet-buttons { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; margin-top: 16px; }
+  #sheet .review { justify-content: center; height: 46px; border-radius: 23px; font-size: 15px; background: var(--lg-bg-interactive); }
+  #sheet .review kbd { display: none; }
+  #sheet .review:is(.merge, .fix), #sheet .sheet-buttons:not(:has(.merge, .fix)) > .review[data-depth='full'] {
+    background: color-mix(in srgb, var(--lg-accent) 82%, #000); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  }
+  #sheet .open { display: flex; align-items: center; justify-content: center; height: 46px; margin-top: 16px; border-radius: 23px; background: var(--lg-bg-interactive); color: var(--lg-ink); font-size: 15px; font-weight: 600; text-decoration: none; }
+  .sheet-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--lg-border-subtle); }
+  .sheet-more :is(a, button) { padding: 8px 14px; border-radius: 18px; background: var(--lg-bg-interactive); color: var(--lg-ink); font-size: 13.5px; font-weight: 500; text-decoration: none; }
+  /* Settings on the phone rise as a sheet from the bottom too, over the blurred list and tab bar. */
+  :root[data-remote] #settings-fold { position: fixed; inset: auto max(8px, env(safe-area-inset-right, 0px)) max(8px, env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px)); z-index: 6; }
+  :root[data-remote] #settings { border-radius: 28px; background: var(--sheet-bg); box-shadow: var(--lg-highlight), var(--lg-shadow-high); }
+  :root[data-remote][data-settings] #foot > :not(#settings-fold) { visibility: hidden; }
+  :root[data-remote][data-settings] header { filter: blur(8px); opacity: 0.5; pointer-events: none; }
   :root[data-remote] :is(kbd, #menu [data-do='zed']) { display: none; }
   :root[data-remote] #list { -webkit-touch-callout: none; }
   /* A long press held long enough (app/remote.js): lift to open the card menu. */
@@ -607,6 +648,7 @@
   </div>
 </section></div>
 <span id="foot-config"></span><span id="used" hidden></span><span id="status" aria-live="polite"></span><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
+<dialog id="sheet" aria-label="Pull request"></dialog>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>
   <button type="button" data-do="branch">Copy Branch</button>

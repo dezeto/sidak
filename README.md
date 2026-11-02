@@ -141,8 +141,8 @@ extension and put its id in `config.json`, and set the cmux socket password.
 
 ## Phone
 
-The board works from a phone through a Cloudflare Tunnel, actions included: a tap does what a click does, ⋯ on a card or a long press (the card
-lights up; lift to open) brings up the right-click menu, a tap on a status icon says what it means, a sideways swipe changes
+The board works from a phone through a Cloudflare Tunnel, actions included: the tabs float at the bottom in thumb reach, cards are compact rows,
+and a tap on one opens its sheet (TL;DR, Open PR, Skim / Deep or Fix / Nudge / Merge, Copy, Ignore), a tap on a status icon says what it means, a sideways swipe changes
 tab, and reviews still open in cmux on the Mac. In Safari, Share > Add to Home Screen makes it a full-screen Sidak app. Sidak.app serves the board on `127.0.0.1` only and runs `cloudflared`, which lets a request through only with a
 valid Cloudflare Access login.
 
