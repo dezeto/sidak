@@ -486,6 +486,55 @@ open(idle_path + ".tmp", "w").write(json.dumps(idle)); os.replace(idle_path + ".
 PY
 }
 
+# My merged PRs (the last 14 days) leave their local branch and its worktrees behind: deleted, but only when nothing would be lost.
+# The branch's tip is the merged head or behind it (nothing unpushed), every worktree on it is clean (untracked files count),
+# and it is not the branch my checkout itself is on (that would mean switching it). Logged in autolog.json. DRY=1 only prints.
+prune() {
+  python3 - $SIDAK_DIR "$(cfg .repos)" <<'PY'
+import datetime, json, os, subprocess, sys, time
+sidak, repos = sys.argv[1], os.path.expanduser(sys.argv[2])
+dry = bool(os.environ.get("DRY"))
+since = (datetime.date.today() - datetime.timedelta(days=14)).isoformat()
+QUERY = """query ($q: String!) { search(query: $q, type: ISSUE, first: 100) { nodes { ... on PullRequest {
+  number headRefName headRefOid repository { nameWithOwner } } } } }"""
+out = subprocess.run(["gh", "api", "graphql", "-f", f"query={QUERY}", "-f", f"q=is:pr is:merged author:@me merged:>={since}"], capture_output=True, text=True)
+if out.returncode: sys.exit()
+git = lambda where, *args: subprocess.run(["git", "-C", where, *args], capture_output=True, text=True)
+done = []
+for pr in json.loads(out.stdout)["data"]["search"]["nodes"]:
+    nwo, n = pr["repository"]["nameWithOwner"], pr["number"]
+    checkout = os.path.join(repos, nwo.split("/")[1])
+    if not os.path.isdir(os.path.join(checkout, ".git")): continue
+    branch, head = pr["headRefName"], pr["headRefOid"]
+    tip = git(checkout, "rev-parse", "--verify", "-q", f"refs/heads/{branch}").stdout.strip()
+    if not tip: continue
+    if tip != head:
+        if git(checkout, "cat-file", "-e", head).returncode: git(checkout, "fetch", "-q", "origin", f"pull/{n}/head")
+        if git(checkout, "merge-base", "--is-ancestor", tip, head).returncode: continue  # local commits GitHub never saw
+    git(checkout, "worktree", "prune")  # worktrees whose folder is already gone (a scratchpad's) are only listed: drop the listing
+    trees, path = [], None
+    for line in git(checkout, "worktree", "list", "--porcelain").stdout.splitlines():
+        if line.startswith("worktree "): path = line[9:]
+        elif line == f"branch refs/heads/{branch}": trees.append(path)
+    if os.path.realpath(checkout) in map(os.path.realpath, trees): continue
+    if any(git(tree, "status", "--porcelain").stdout.strip() for tree in trees): continue
+    # A worktree touched in the last hour may still be some session's (another agent finishing up there): left for a later tick.
+    index = lambda tree: os.path.join(tree, git(tree, "rev-parse", "--git-path", "index").stdout.strip())
+    if any(time.time() - os.path.getmtime(index(tree)) < 3600 for tree in trees if os.path.exists(index(tree))): continue
+    if dry:
+        done.append(f'{nwo.split("/")[1]}#{n} {branch}{" + " + str(len(trees)) + " worktree" if trees else ""}'); continue
+    if any(git(checkout, "worktree", "remove", tree).returncode for tree in trees): continue
+    if git(checkout, "branch", "-D", branch).returncode: continue
+    done.append(f'{nwo.split("/")[1]}#{n}')
+    path_log = os.path.join(sidak, "autolog.json")
+    log = json.load(open(path_log)) if os.path.exists(path_log) else []
+    log.append({"at": int(time.time() * 1000), "kind": "prune", "pr": f"{nwo}#{n}",
+                "text": f"Deleted its local branch{' and worktree' if len(trees) == 1 else f' and {len(trees)} worktrees' if trees else ''}"})
+    open(path_log + ".tmp", "w").write(json.dumps(log)); os.replace(path_log + ".tmp", path_log)
+if done: print(("would prune " if dry else "pruned ") + ", ".join(done), file=sys.stderr)
+PY
+}
+
 status() {
   print "run: $(entry state) $(entry depth)"
   gh api repos/$ORG/$repo/pulls/$n/reviews --jq "[.[] | select(.user.login == \"$ME\")] | last
@@ -498,7 +547,7 @@ status() {
 case $cmd in
   board) board ;;
   learn) learn ;;
-  auto) tidy; auto ;;
+  auto) tidy; prune; auto ;;
   quick|review) start ;;
   status) status ;;
   wait) while [[ $(entry state) == running ]]; do sleep 30; done; status ;;

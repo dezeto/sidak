@@ -53,6 +53,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Approved PRs stay current**: an approved PR of yours that falls behind a base requiring up-to-date branches gets GitHub's
   update-branch once its checks are done.
 - **Fixed** on your own card: `claude-fix`'s summary (Done, Left, Failing), so you know what it did after its tab closed.
+- **Merged branches go**: the local branch (and worktrees) of each PR of yours merged in the last 14 days is deleted, only when its
+  tip is the merged head or behind it, every worktree on it is clean and unused for an hour, and your checkout is not on it.
 - **Finished tabs close**: a review or fix tab whose run ended closes about 10 minutes later, unless it is the tab you have
   selected or pinned.
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`

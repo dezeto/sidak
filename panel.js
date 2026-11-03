@@ -1091,7 +1091,9 @@ const AUTO_LOG = 12;
 // autolog.json as of the last render (render), also claude-fix's summaries for the cards; my own Fix runs are in it as manual.
 let autoLogEntries = [];
 function autoLog() {
-  const log = autoLogEntries.filter((e) => !e.manual);
+  // Merged branches it deleted (pr-board prune) are one line at the end: dozens of them would bury the fixes.
+  const log = autoLogEntries.filter((e) => !e.manual && e.kind !== 'prune');
+  const pruned = autoLogEntries.filter((e) => e.kind === 'prune').length;
   const list = el('div', { className: 'sheet-more week-waiting' });
   for (const e of log.toReversed().slice(0, AUTO_LOG)) {
     const [nwo, n] = e.pr.split('#');
@@ -1099,7 +1101,8 @@ function autoLog() {
     const text = [`${nwo.split('/')[1]} #${n}`, e.text, e.done ?? (running ? 'running' : null), ago(new Date(e.at).toISOString())].filter(Boolean).join(' · ');
     list.append(el('a', { href: `https://github.com/${nwo}/pull/${n}`, target: '_blank', textContent: text, title: text }));
   }
-  return log.length ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length} this week` }), list] : [];
+  if (pruned) list.append(el('span', { className: 'week-pruned', textContent: `Deleted ${pruned} merged local branch${pruned === 1 ? '' : 'es'}` }));
+  return log.length || pruned ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length + pruned} this week` }), list] : [];
 }
 function openWeek() {
   const since = Date.now() - WEEK;
