@@ -1,0 +1,97 @@
+#!/bin/zsh
+# Gets my own PR unblocked in a visible session: its review threads, failing checks and conflicts, then a push and a re-request.
+# Org, login, checkout dir, memory and profiles come from config.json beside bin/, as for claude-review.
+#   claude-fix [<repo>] <pr>      repo defaults to the first reviewable one
+#   PROFILE=cc ... / MODEL=sonnet ... / EFFORT=medium ...
+set -u
+# The whole script in one block, read before any of it runs: an edit while a review is open cannot shift what is left to read.
+{
+SIDAK_DIR=${SIDAK_DIR:-${0:A:h:h}}
+cfg() { jq -r "$@" $SIDAK_DIR/config.json; }
+login=$(cfg .login) repos=$(cfg .repos) rules=$(cfg .rulesRepo); repos=${repos/#\~/$HOME}
+if (( $# >= 2 )); then repo=${1#*/}; n=$2; else repo=$(cfg '.reviewable[0]'); n=${1:?pr number}; fi
+REPO=$(cfg .org)/$repo
+CRM=$repos/$repo
+[[ -d $CRM/.git ]] || { echo "no checkout at $CRM"; exec zsh; }
+memdir() { print -r -- $HOME/.claude/projects/${1//[^a-zA-Z0-9]/-}/memory; }
+CRMMEM=$(memdir $repos/${rules:-$repo})
+MEM=$(memdir $CRM)
+[[ -f $MEM/MEMORY.md ]] || MEM=$CRMMEM
+PROFILE=${PROFILE:-$(cfg .defaultProfile)}
+profile_dir=$(cfg --arg p $PROFILE '.profiles[$p] // ""')
+[[ -n $profile_dir ]] && export CLAUDE_CONFIG_DIR=${profile_dir/#\~/$HOME}
+STATE=$SIDAK_DIR/state.json
+# My self-check's fix list (claude-review on my own PR), when one from the last week is there.
+REPORT=${STATE:h}/reviews/$repo-$n.md
+[[ -f $REPORT ]] && report="0. My self-review's fix list is at $REPORT: apply each fix in it that still applies, the blocking ones first." || report=""
+# state.json: running while the session is open (the board hides Fix and shows the card under Running); after, the entry it ran over
+# (a self-check's fix list) comes back, or it goes.
+mark() { python3 - "$STATE" "$REPO#$n" "$1" "${MODEL:-opus}" <<'PY'
+import json, os, sys, time
+path, key, state, model = sys.argv[1:]
+data = json.load(open(path)) if os.path.exists(path) else {}
+prev = data.get(key, {})
+if state == "clear":
+    if prev.get("prev"): data[key] = prev["prev"]
+    else: data.pop(key, None)
+else: data[key] = {"state": state, "at": int(time.time() * 1000), "model": model, "depth": "fix", "run": int(time.time()), "prev": prev.get("prev", prev) if prev.get("depth") == "fix" else prev}
+json.dump(data, open(path, "w"))
+PY
+}
+finish() { echo; echo "fix $repo#$n finished (exit $1)"; mark clear; exec zsh; }
+trap 'mark clear; exit 129' HUP TERM
+read branch head <<< "$(gh pr view "$n" -R "$REPO" --json headRefName,headRefOid --jq '"\(.headRefName) \(.headRefOid)"')"
+[[ -n $branch ]] || { echo "cannot read PR $n"; exec zsh; }
+started=$(( $(date +%s) * 1000 ))
+# The summary for the board (the card's Fixed), written by Claude, stored into Sidak's autolog.json once it exits (store_note).
+NOTE=$(mktemp)
+echo "== fix $repo#$n on $branch (PROFILE=$PROFILE MODEL=${MODEL:-opus} EFFORT=${EFFORT:-high}) =="
+mark running
+# Work where the branch already is (never a second checkout of the same branch); otherwise a worktree tracking origin.
+git -C $CRM fetch origin "$branch" || finish 1
+dir=$(git -C $CRM worktree list --porcelain | awk -v b="refs/heads/$branch" '$1=="worktree"{d=$2} $1=="branch"&&$2==b{print d}')
+if [[ -z $dir ]]; then
+  dir=$CRM/.claude/worktrees/fix-$n
+  [[ -d $dir ]] && git -C $CRM worktree remove --force "$dir"
+  git -C $CRM worktree add --track -B "$branch" "$dir" "origin/$branch" || finish 1
+else
+  echo "branch is checked out at $dir, working there"
+fi
+sys=$(mktemp)
+cat "$MEM/MEMORY.md" "$CRMMEM/feedback_kent_beck_style.md" "$CRMMEM/feedback_no_claude_footer_on_issue_comments.md" > "$sys" 2>/dev/null
+cd "$dir"
+prompt=$(cat <<EOF
+This is my own PR #$n in $REPO (author $login), checked out on its branch $branch in this directory. Get it unblocked.
+
+Read first: gh pr view $n for the description; the review threads (GraphQL reviewThreads on the PR with isResolved, path, line and comments), gh api repos/$REPO/pulls/$n/comments, repos/$REPO/pulls/$n/reviews, repos/$REPO/issues/$n/comments; gh pr checks $n and, for a failed check, gh run view <id> --log-failed; whether the branch conflicts with origin/main. Your memory files live in $MEM; read any whose index line looks relevant.
+
+Then, in this order:
+$report
+1. Every unresolved review thread and every change request from another person or the team bot: apply the fix when it is right. When you disagree, change nothing for that point and keep it for the summary.
+2. Failing checks: fix the cause, not the check. Run the same lint and tests locally the way the repo conventions say.
+3. Conflicts with origin/main: rebase onto origin/main and resolve. Never force-push except as the rebase requires, with --force-with-lease.
+Keep every change inside the scope of the PR. Commit in small signed commits (git commit -S) with conventional messages and the Co-Authored-By trailer, then push the branch.
+After pushing: reply on each thread you addressed with one line and the commit sha, no footer; resolve nothing yourself. Re-request review from everyone whose review requested changes (gh pr edit $n --add-reviewer).
+Finish with a short summary in this terminal: what changed per point, what you left alone and why, what still fails.
+Last, write the same summary to $NOTE as exactly three lines, in plain words, no paths or shas: "- Done: <what you changed, one sentence>", "- Left: <what you left alone and why, or nothing>", "- Failing: <what still fails, or nothing>".
+EOF
+)
+claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
+rc=$?
+# Onto the fix's autolog.json entry (pr-board auto's, made as it started this), else a new one marked manual (a Fix from the board).
+python3 - ${STATE:h}/autolog.json "$REPO#$n" $started $head $NOTE <<'PY'
+import json, os, sys
+path, key, started, head, note = sys.argv[1:]
+text = open(note).read().strip()
+if not text: sys.exit()
+log = json.load(open(path)) if os.path.exists(path) else []
+started = int(started)
+entry = next((e for e in reversed(log) if e["pr"] == key and e["kind"] == "fix" and "summary" not in e and started - 300000 <= e["at"] <= started + 60000), None)
+if entry is None: log.append(entry := {"at": started, "kind": "fix", "pr": key, "text": "Fix", "sha": head, "manual": True})
+entry["summary"] = text
+open(path + ".tmp", "w").write(json.dumps(log)); os.replace(path + ".tmp", path)
+PY
+rm -f $NOTE
+cd $CRM
+finish $rc
+}; exit

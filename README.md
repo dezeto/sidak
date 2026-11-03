@@ -88,6 +88,8 @@ Two front ends share one page:
   `ccopen://` and `ccset://` URLs into actions.
 - `claude-review`: checks the PR out in a worktree and runs the review interactively.
 - `claude-ask`: answers a question about a review in a cmux tab and stores the answer for the board.
+- `claude-fix`: on your own PR, fixes review threads, failing checks and conflicts, pushes, replies and re-requests review;
+  its summary lands on the card as Fixed.
 - `pr-board`: the counts for the menu bar and the auto-review tick.
 
 `config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/`, `autofix.json`, `autolog.json` and `token.txt` are personal or live data and stay out of git.

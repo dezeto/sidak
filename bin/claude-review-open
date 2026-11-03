@@ -56,12 +56,14 @@ if [[ $scheme == ccopen ]]; then
   exec ${commands[zed]:-/usr/local/bin/zed} "$dir"
 fi
 if [[ $scheme == ccfix ]]; then
+  profile=$(jq -r '.profile // ""' $SIDAK_DIR/settings.json 2>/dev/null)
+  [[ $(cfg --arg p "$profile" '.profiles | has($p)') == true ]] || profile=$(cfg .defaultProfile)
   ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "fix $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
   # From Auto (FOCUS=false) a fix is never running here (pr-board checks), so its tab is an idle one: closed, and a fresh one starts.
   if [[ -n $ref && ${FOCUS:-true} == false ]]; then $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1; ref=""; fi
   if [[ -n $ref ]]; then exec $cmux workspace select "$ref"; fi
   exec $cmux new-workspace --focus ${FOCUS:-true} --name "fix $repo#$n" --cwd "$repos/$repo" \
-    --command "${model:+MODEL=$model }${effort:+EFFORT=$effort }$HOME/bin/claude-fix $repo $n"
+    --command "PROFILE=$profile ${model:+MODEL=$model }${effort:+EFFORT=$effort }${(q)SIDAK_DIR}/bin/claude-fix $repo $n"
 fi
 # Focus only while state.json says the review is still running; a finished run's idle workspace is closed and a fresh one starts (re-review).
 ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "review $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)
