@@ -206,7 +206,8 @@ start() {
 # While settings.json auto.on, start a quick review of every Inbox PR in cmux workspaces that do not take focus, with the panel's
 # model and effort (Deep instead of a quick review for a risky PR: see depth_of): my own ready PRs first (a self-check), then VIPs, then the oldest request; at most settings.json autoCap auto runs a day (0, the default: no limit). A PR with a state.json entry is never started
 # again, unless it is a manual run that failed, or a follow-up (updated): one I reviewed whose author pushed or re-requested me since,
-# re-reviewed once it has been quiet for an hour. The one output line starts with "auto on" while the mode is on.
+# re-reviewed once it has been quiet for an hour. Ahead of all of them, claude-fix on my own PRs that fail checks, conflict or wait on
+# me for a change request (see fixes). The one output line starts with "auto on" while the mode is on.
 auto() {
   local line=$(UPDATED=$(updated) python3 - $SETTINGS $STATE $SIDAK_DIR/config.json <<'PY'
 import datetime, json, os, subprocess, sys, time
@@ -253,8 +254,10 @@ since_path = os.path.join(os.path.dirname(state_path), "selfcheck-since")
 if not os.path.exists(since_path): open(since_path, "w").write(str(int(now)))
 since = int(open(since_path).read().strip() or now)
 OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:created-asc", type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  number isDraft createdAt updatedAt reviewDecision headRefOid repository { name nameWithOwner } author { login }
-  commits(last: 1) { nodes { commit { committedDate } } }
+  number isDraft createdAt updatedAt reviewDecision headRefOid mergeable repository { name nameWithOwner } author { login }
+  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state } } } }
+  reviewThreads(first: 100) { nodes { isResolved comments(last: 1) { nodes { createdAt author { login } } } } }
+  latestReviews(first: 20) { nodes { state submittedAt } }
   timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
 iso = lambda text: datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
 def ready_at(pr): return iso((pr["timelineItems"]["nodes"] or [pr])[-1]["createdAt"])
@@ -266,13 +269,39 @@ def recheck(pr):
     return (entry.get("state") == "reviewed" and entry.get("report") and entry.get("sha") and entry["sha"] != pr["headRefOid"]
             and pushed and now - iso(pushed) >= 600)
 own = subprocess.run(["gh", "api", "graphql", "-f", f"query={OWN}"], capture_output=True, text=True)
-mine = [pr for pr in json.loads(own.stdout)["data"]["search"]["nodes"]
-        if pr.get("reviewDecision") != "APPROVED" and eligible(pr) and (recheck(pr) or (ready_at(pr) >= since and not done(pr)))] if own.returncode == 0 else []
+own_prs = json.loads(own.stdout)["data"]["search"]["nodes"] if own.returncode == 0 else []
+mine = [pr for pr in own_prs if pr.get("reviewDecision") != "APPROVED" and eligible(pr) and (recheck(pr) or (ready_at(pr) >= since and not done(pr)))]
+# Auto-fix: claude-fix (fixes, pushes, replies on the threads, re-requests review) on my own ready PR, in a background cmux tab, when
+# its checks fail, it conflicts with its base, or a change request waits on me: an unresolved thread whose last comment is someone
+# else's, or a request for changes after my last push, quiet for an hour (the reviewer is done for now). Once per head commit, kept in
+# autofix.json: a fix that pushes nothing is not run again, and one that pushes gets one more look at the new head.
+# ponytail: at most 3 auto-fixes per PR ever, so a fix that keeps failing CI stops; delete its autofix.json key to allow more.
+fix_path = os.path.join(os.path.dirname(state_path), "autofix.json")
+fixed = json.load(open(fix_path)) if os.path.exists(fix_path) else {}
+def last_commit(pr): return pr["commits"]["nodes"][0]["commit"] if pr["commits"]["nodes"] else {}
+def asks(pr):
+    me, pushed = pr["author"]["login"], iso(last_commit(pr).get("committedDate") or "1970-01-01T00:00:00Z")
+    lasts = [thread["comments"]["nodes"][-1] for thread in pr["reviewThreads"]["nodes"] if not thread["isResolved"] and thread["comments"]["nodes"]]
+    marks = [iso(c["createdAt"]) for c in lasts if (c["author"] or {}).get("login") != me]
+    marks += [iso(r["submittedAt"]) for r in pr["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"] and iso(r["submittedAt"]) > pushed]
+    return bool(marks) and now - max(marks) >= 3600
+def why_fix(pr):
+    why = []
+    if (last_commit(pr).get("statusCheckRollup") or {}).get("state") in ("FAILURE", "ERROR"): why.append("failing checks")
+    if pr.get("mergeable") == "CONFLICTING": why.append("conflicts")
+    if asks(pr): why.append("change requests")
+    return ", ".join(why)
+fixes = []
+for pr in own_prs:
+    runs = fixed.get(key(pr), [])
+    if not eligible(pr) or state.get(key(pr), {}).get("state") == "running" or pr["headRefOid"] in runs or len(runs) >= 3: continue
+    if why := why_fix(pr): fixes.append((pr, why))
+mine = [pr for pr in mine if all(pr is not other for other, _ in fixes)]  # its fix comes first; the self-check follows the fix's push
 todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
 todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
-if not todo: sys.exit(print("auto on (nothing to review)"))
+if not todo and not fixes: sys.exit(print("auto on (nothing to review)"))
 # Smart depth: Deep (tests and mutations) where a missed bug costs most, a Skim for the rest. A PR is risky when a changed file matches
 # one of these, or when it changes more than 500 lines.
 import re
@@ -288,14 +317,22 @@ def depth_of(pr):
     why = [name for name, rule in RISKY if any(rule.search(path) for path in paths)]
     if info["additions"] + info["deletions"] > 500: why.append(f'{info["additions"] + info["deletions"]} lines')
     return ("full" if why else "quick"), ", ".join(why)
-for pr in todo[:left]:
+picked = fixes[:left]
+for pr, why in picked:
+    repo, n = pr["repository"]["name"], pr["number"]
+    print(f'ccfix://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}\t{repo}#{n} Fix ({why})')
+    fixed.setdefault(key(pr), []).append(pr["headRefOid"])
+# ponytail: marked when printed, so a fix whose cmux tab failed to open waits for the next push.
+if picked and not os.environ.get("DRY"):
+    open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
+for pr in todo[:None if left is None else left - len(picked)]:
     repo, n = pr["repository"]["name"], pr["number"]
     depth, why = depth_of(pr)
     print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/{depth}\t{repo}#{n}{" Deep (" + why + ")" if why else ""}')
 PY
 )
   local lines=(${(f)line}) started=() failed=()
-  [[ $lines[1] == ccreview://* ]] || { print -r -- "${line:-auto error}"; return; }
+  [[ $lines[1] == cc*://* ]] || { print -r -- "${line:-auto error}"; return; }
   # Each line: the opener URL, a tab, then its label (repo#n, and why Deep when it is).
   [[ -n ${DRY:-} ]] && { print "auto on dry-run ${(j:, :)${(@)lines#*$'\t'}}"; return; }
   for line in $lines; do

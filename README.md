@@ -42,6 +42,9 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Auto self-checks your own PRs first**: with Auto on, each PR you open ready or move out of draft gets a quick self-check (its
   fix list) ahead of anyone else's review; approved ones are skipped. Push to it and, 10 quiet minutes later, Auto checks it
   again; Nudge waits for that fix list, so reviewers get a head your own check has read.
+- **Auto fixes your own PRs**: with Auto on, a ready PR of yours whose checks fail, that conflicts with its base, or that has a change
+  request waiting on you (quiet for an hour) gets `claude-fix` in a background cmux tab: it fixes, pushes, replies on the threads
+  and re-requests review. Once per head commit, at most three times per PR (`autofix.json`).
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`
   (deleted after a week). The card's **Copy fix list** copies its path to hand to Claude, and Fix reads it by itself.
 - **Token use** in the footer: what today's reviews used (hover for cache reads), each card's run in its icon's tooltip, and

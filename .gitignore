@@ -10,3 +10,4 @@ config.json
 learn/
 selfcheck-since
 answers/
+autofix.json
