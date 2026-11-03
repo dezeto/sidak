@@ -1,6 +1,6 @@
 # Self-check for pr-board auto's flaky-CI classifier (checks): python3 bin/pr-board-test.py prints ok.
 import re, subprocess
-src = open('__import__("os").path.join(__import__("os").path.dirname(__file__), "pr-board")').read()
+src = open(__import__("os").path.join(__import__("os").path.dirname(__file__), "pr-board")).read()
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"]
 exec(src[src.index('import re\nINFRA'):src.index('def why_fix')])
 def pr(*nodes, state="FAILURE"): return {"repository": {"nameWithOwner": "x/y"}, "commits": {"nodes": [{"commit": {"statusCheckRollup": {"state": state, "contexts": {"nodes": list(nodes)}}}}]}}

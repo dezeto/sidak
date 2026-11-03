@@ -45,6 +45,10 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Auto fixes your own PRs**: with Auto on, a ready PR of yours whose checks fail, that conflicts with its base, or that has a change
   request waiting on you (quiet for an hour) gets `claude-fix` in a background cmux tab: it fixes, pushes, replies on the threads
   and re-requests review. Once per head commit, at most three times per PR (`autofix.json`).
+  A failure that is the CI's own fault (a lost runner, a timeout, a full disk) gets its failed jobs rerun first, once per head
+  commit, at no token cost; claude-fix sees it only if it fails again.
+- **Finished tabs close**: a review or fix tab whose run ended closes about 10 minutes later, unless it is the tab you have
+  selected or pinned.
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`
   (deleted after a week). The card's **Copy fix list** copies its path to hand to Claude, and Fix reads it by itself.
 - **Token use** in the footer: what today's reviews used (hover for cache reads), each card's run in its icon's tooltip, and
