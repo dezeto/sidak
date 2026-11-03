@@ -1070,7 +1070,21 @@ function sheetHistory(pr) {
 // ponytail: tokens are each PR's latest run's; a PR reviewed twice this week counts its last run's tokens only.
 let lastState = {}, weekInbox = [];
 const WEEK = 7 * 86400000;
-function openWeek() {
+// What Auto did (pr-board auto's autolog.json): newest first, the last 12 of the week.
+const AUTO_LOG = 12;
+async function autoLog() {
+  const res = await fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).catch(() => null);
+  const log = res?.ok ? await res.json().catch(() => []) : [];
+  const list = el('div', { className: 'sheet-more week-waiting' });
+  for (const e of log.toReversed().slice(0, AUTO_LOG)) {
+    const [nwo, n] = e.pr.split('#');
+    const running = e.kind === 'fix' && !e.done && lastState[e.pr]?.state === 'running';
+    const text = [`${nwo.split('/')[1]} #${n}`, e.text, e.done ?? (running ? 'running' : null), ago(new Date(e.at).toISOString())].filter(Boolean).join(' · ');
+    list.append(el('a', { href: `https://github.com/${nwo}/pull/${n}`, target: '_blank', textContent: text, title: text }));
+  }
+  return log.length ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length} this week` }), list] : [];
+}
+async function openWeek() {
   const since = Date.now() - WEEK;
   const runs = Object.values(lastState)
     .flatMap((e) => (e.history?.length ? e.history : e.state === 'reviewed' ? [{ at: e.at, verdict: e.verdict, self: Boolean(e.report) }] : []))
@@ -1101,6 +1115,7 @@ function openWeek() {
     el('div', { className: 'sheet-grab' }), el('p', { className: 'sheet-title', textContent: 'This week' }),
     el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }), tiles,
     ...(longest.length ? [el('p', { className: 'week-label', textContent: 'Waiting on you longest' }), waiting] : []),
+    ...(await autoLog()),
   );
   sheet.showModal();
 }

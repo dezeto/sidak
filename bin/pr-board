@@ -271,6 +271,28 @@ def recheck(pr):
             and pushed and now - iso(pushed) >= 600)
 own = subprocess.run(["gh", "api", "graphql", "-f", f"query={OWN}"], capture_output=True, text=True)
 own_prs = json.loads(own.stdout)["data"]["search"]["nodes"] if own.returncode == 0 else []
+# What Auto did, for the board's This week sheet (autolog.json, the last seven days): each review and fix it started and each CI rerun,
+# [{at (ms), kind (review, fix, rerun), pr (owner/repo#n), text, sha (a fix's head when it started), done (a fix's outcome)}].
+log_path = os.path.join(os.path.dirname(state_path), "autolog.json")
+log = json.load(open(log_path)) if os.path.exists(log_path) else []
+def note(pr, kind, text, **extra): log.append({"at": int(now * 1000), "kind": kind, "pr": key(pr), "text": text, **extra})
+def save_log():
+    if os.environ.get("DRY"): return
+    kept = [e for e in log if e["at"] >= (now - 7 * 86400) * 1000][-300:]
+    open(log_path + ".tmp", "w").write(json.dumps(kept)); os.replace(log_path + ".tmp", log_path)
+# A fix that has finished: what it pushed, from the head it started on to the PR's head now.
+heads = {key(pr): pr for pr in own_prs}
+for e in log:
+    pr = heads.get(e["pr"])
+    # Settled 3 minutes on at the earliest: claude-fix marks itself running a few seconds after its tab opens.
+    if e["kind"] != "fix" or "done" in e or not pr or now * 1000 - e["at"] < 180000 or state.get(e["pr"], {}).get("state") == "running": continue
+    if pr["headRefOid"] == e["sha"]: e["done"] = "pushed nothing"; continue
+    diff = subprocess.run(["gh", "api", f'repos/{pr["repository"]["nameWithOwner"]}/compare/{e["sha"]}...{pr["headRefOid"]}', "--jq",
+                          '{status, subjects: [.commits[].commit.message | split("\\n")[0]]}'], capture_output=True, text=True)
+    info = json.loads(diff.stdout) if diff.returncode == 0 else {"status": "", "subjects": []}
+    commits = info["subjects"]
+    e["done"] = ("rebased and pushed" if info["status"] == "diverged" else
+                 f'pushed {len(commits)} commit{"s" * (len(commits) != 1)}: {"; ".join(commits[:3])}' if commits else "pushed")
 mine = [pr for pr in own_prs if pr.get("reviewDecision") != "APPROVED" and eligible(pr) and (recheck(pr) or (ready_at(pr) >= since and not done(pr)))]
 # Auto-fix: claude-fix (fixes, pushes, replies on the threads, re-requests review) on my own ready PR, in a background cmux tab, when
 # its checks fail, it conflicts with its base, or a change request waits on me: an unresolved thread whose last comment is someone
@@ -330,6 +352,7 @@ for pr in own_prs:
             for run in run_ids: subprocess.run(["gh", "run", "rerun", run, "--failed", "-R", pr["repository"]["nameWithOwner"]], capture_output=True)
         fixed.setdefault(key(pr) + " rerun", []).append(pr["headRefOid"])
         reruns.append(f'{pr["repository"]["name"]}#{pr["number"]}')
+        note(pr, "rerun", "Reran CI's flaky jobs")
         ci = None
     if why := why_fix(pr, "failing" if ci == "flaky" else ci): fixes.append((pr, why))
 if reruns:
@@ -340,7 +363,7 @@ todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
 todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
-if not todo and not fixes: sys.exit(print(f'auto on ({"reran CI on " + ", ".join(reruns) if reruns else "nothing to review"})'))
+if not todo and not fixes: save_log(); sys.exit(print(f'auto on ({"reran CI on " + ", ".join(reruns) if reruns else "nothing to review"})'))
 # Smart depth: Deep (tests and mutations) where a missed bug costs most, a Skim for the rest. A PR is risky when a changed file matches
 # one of these, or when it changes more than 500 lines.
 import re
@@ -361,6 +384,7 @@ for pr, why in picked:
     repo, n = pr["repository"]["name"], pr["number"]
     print(f'ccfix://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}\t{repo}#{n} Fix ({why})')
     fixed.setdefault(key(pr), []).append(pr["headRefOid"])
+    note(pr, "fix", f"Fix ({why})", sha=pr["headRefOid"])
 # ponytail: marked when printed, so a fix whose cmux tab failed to open waits for the next push.
 if picked and not os.environ.get("DRY"):
     open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
@@ -368,6 +392,8 @@ for pr in todo[:None if left is None else left - len(picked)]:
     repo, n = pr["repository"]["name"], pr["number"]
     depth, why = depth_of(pr)
     print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/{depth}\t{repo}#{n}{" Deep (" + why + ")" if why else ""}')
+    note(pr, "review", ("Deep" if depth == "full" else "Skim") + (" self-check" if pr in mine else " review") + (f" ({why})" if why else ""))
+save_log()
 PY
 )
   local lines=(${(f)line}) started=() failed=()

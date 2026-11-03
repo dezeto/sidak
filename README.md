@@ -29,7 +29,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   and whether new commits came since.
 - **Reviewer load** over your Waiting tab: whom your open PRs wait on, most first, so you know whom to nudge.
 - **This week** (the calendar button by the sync time): the week's reviews, what they caught, your self-checks, tokens and
-  Auto's share, and the Inbox PRs waiting on you longest.
+  Auto's share, the Inbox PRs waiting on you longest, and what Auto did: each review and fix it started, what a fix pushed,
+  and each CI rerun.
 - **Learns from your corrections**: when you delete or reword one of Claude's inline comments after a review posts, the board
   notices within the hour (for a week) and the next reviews get it as taste: no points like the deleted ones, phrasing like yours.
   The same goes for the author's pushback: a thread they answered and resolved with the code unchanged becomes a point not to make.
@@ -82,7 +83,7 @@ Two front ends share one page:
 - `claude-ask`: answers a question about a review in a cmux tab and stores the answer for the board.
 - `pr-board`: the counts for the menu bar and the auto-review tick.
 
-`config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/` and `token.txt` are personal or live data and stay out of git.
+`config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/`, `autofix.json`, `autolog.json` and `token.txt` are personal or live data and stay out of git.
 
 ## Reading the board
 

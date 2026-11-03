@@ -463,7 +463,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   // only with a valid Cloudflare Access login. GET serves the page with app/remote.js, its files and the board's lists; POST /act runs
   // an action like a tap on the board. Nothing else in the repo is served: token.txt and handoffs/ never leave the Mac.
   var listener: NWListener?
-  let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "settings.json", "config.json", "icons/180.png", "icons/32.png"]
+  let served = ["panel.js", "pr.js", "lg.css", "app/remote.js", "state.json", "autolog.json", "settings.json", "config.json", "icons/180.png", "icons/32.png"]
   // Every action the board sends, minus Zed (it opens on the Mac's screen); sidaksync: is the phone's refresh button.
   let remoteActions = ["ccreview:", "ccfix:", "ccmerge:", "ccnudge:", "ccready:", "ccapprove:", "ccask:", "ccset:", "sidaksync:"]
   func serve(port: UInt16) {
