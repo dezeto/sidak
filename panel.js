@@ -370,6 +370,27 @@ function statusMark(pr) {
   return ['i-eye', 'Waiting for your review'];
 }
 
+// A status word that opens a TL;DR under the card (What / Found / Next for a review, Done / Left / Failing for a fix), open across renders.
+function tldrToggle(row, word, lines, key) {
+  const tldr = row.appendChild(el('div', { className: 'tldr', id: `tldr-${++tldrIds}` }));
+  for (const [label, text] of lines) tldr.append(el('b', { textContent: label }), el('span', { textContent: text }));
+  const toggle = el('button', { type: 'button', className: 'state', textContent: word.textContent, title: word.title });
+  Object.assign(toggle.dataset, word.dataset);
+  toggle.setAttribute('aria-controls', tldr.id);
+  word.replaceWith(toggle);
+  const show = () => {
+    toggle.setAttribute('aria-expanded', openTldrs.has(key));
+    tldr.hidden = !openTldrs.has(key);
+  };
+  show();
+  toggle.onclick = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!openTldrs.delete(key)) openTldrs.add(key);
+    show();
+  };
+}
+
 function prRow(pr) {
   const row = rowTemplate.cloneNode(true);
   row.href = pr.url;
@@ -400,24 +421,7 @@ function prRow(pr) {
     const next = { requested: 'Re-requested your review', commits: 'New commits since your review' }[pr.followUp?.why] ?? lines.get('Next');
     lines.delete('Next');
     if (next) lines.set('Next', next);
-    const tldr = row.appendChild(el('div', { className: 'tldr', id: `tldr-${++tldrIds}` }));
-    for (const [label, text] of lines) tldr.append(el('b', { textContent: label }), el('span', { textContent: text }));
-    const toggle = el('button', { type: 'button', className: 'state', textContent: state.textContent, title: state.title });
-    Object.assign(toggle.dataset, state.dataset);
-    toggle.setAttribute('aria-controls', tldr.id);
-    state.replaceWith(toggle);
-    const key = `${repoOf(pr)}#${pr.number}`;
-    const show = () => {
-      toggle.setAttribute('aria-expanded', openTldrs.has(key));
-      tldr.hidden = !openTldrs.has(key);
-    };
-    show();
-    toggle.onclick = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!openTldrs.delete(key)) openTldrs.add(key);
-      show();
-    };
+    tldrToggle(row, state, lines, `${repoOf(pr)}#${pr.number}`);
   }
   // On the phone a tap (or a long press) opens the card's sheet instead of the PR: the buttons live there.
   const phone = document.documentElement.hasAttribute('data-remote');
@@ -537,6 +541,16 @@ function prRow(pr) {
         button.title = 'Waits for Auto to self-check your new commits (10 minutes after the last push)';
       }
       actions.prepend(button);
+    }
+    // claude-fix's summary (bin/claude-fix writes it into autolog.json): "Fixed" opens what it did, left alone and what still fails.
+    if (pr.fix) {
+      const lines = new Map([...pr.fix.matchAll(/^[-*]?[ \t]*(Done|Left|Failing):[ \t]*(.+)$/gm)]
+        .filter(([, , text]) => !/^(nothing|none)\b/i.test(text)).map(([, label, text]) => [label, text]));
+      const word = el('span', { className: 'state', textContent: 'Fixed', title: 'What claude-fix did on this PR' });
+      const at = row.querySelector('.state');
+      if (at.textContent) at.after(word);
+      else at.replaceWith(word);
+      if (lines.size) tldrToggle(row, word, lines, `${repoOf(pr)}#${pr.number} fix`);
     }
   }
   // Claude reviewed it and left only comments, nothing blocking: Approve is the next step, mine to take (Claude approves by itself
@@ -676,6 +690,7 @@ function board(sections, state) {
     pr.auto = entry?.auto ?? false;
     pr.verdict = entry?.verdict ?? null;
     pr.tldr = entry?.tldr ?? null;
+    pr.fix = autoLogEntries.findLast((e) => e.kind === 'fix' && e.summary && e.pr === `${repoOf(pr)}#${pr.number}`)?.summary ?? null;
     pr.report = entry?.report ?? null;
     // The head a self-check last read (claude-review's sha): newer commits on my PR wait for Auto's next one before a Nudge.
     pr.checkedSha = entry?.report ? entry.sha ?? null : null;
@@ -899,6 +914,7 @@ async function render() {
     loadSpaces(),
     reviewState(),
     loadSettings(),
+    fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : [])).catch(() => []).then((log) => (autoLogEntries = log)),
     loadConfig(),
   ]);
   config = { ...NO_CONFIG, ...file };
@@ -1072,9 +1088,10 @@ let lastState = {}, weekInbox = [];
 const WEEK = 7 * 86400000;
 // What Auto did (pr-board auto's autolog.json): newest first, the last 12 of the week.
 const AUTO_LOG = 12;
-async function autoLog() {
-  const res = await fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).catch(() => null);
-  const log = res?.ok ? await res.json().catch(() => []) : [];
+// autolog.json as of the last render (render), also claude-fix's summaries for the cards; my own Fix runs are in it as manual.
+let autoLogEntries = [];
+function autoLog() {
+  const log = autoLogEntries.filter((e) => !e.manual);
   const list = el('div', { className: 'sheet-more week-waiting' });
   for (const e of log.toReversed().slice(0, AUTO_LOG)) {
     const [nwo, n] = e.pr.split('#');
@@ -1084,7 +1101,7 @@ async function autoLog() {
   }
   return log.length ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length} this week` }), list] : [];
 }
-async function openWeek() {
+function openWeek() {
   const since = Date.now() - WEEK;
   const runs = Object.values(lastState)
     .flatMap((e) => (e.history?.length ? e.history : e.state === 'reviewed' ? [{ at: e.at, verdict: e.verdict, self: Boolean(e.report) }] : []))
@@ -1115,7 +1132,7 @@ async function openWeek() {
     el('div', { className: 'sheet-grab' }), el('p', { className: 'sheet-title', textContent: 'This week' }),
     el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }), tiles,
     ...(longest.length ? [el('p', { className: 'week-label', textContent: 'Waiting on you longest' }), waiting] : []),
-    ...(await autoLog()),
+    ...autoLog(),
   );
   sheet.showModal();
 }

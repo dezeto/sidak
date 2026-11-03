@@ -48,6 +48,11 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   and re-requests review. Once per head commit, at most three times per PR (`autofix.json`).
   A failure that is the CI's own fault (a lost runner, a timeout, a full disk) gets its failed jobs rerun first, once per head
   commit, at no token cost; claude-fix sees it only if it fails again.
+- **Stacks follow through**: when the PR under one of yours merges and GitHub retargets yours onto main, Auto rebases yours
+  without the merged PR's commits (in a detached worktree) and force-pushes with a lease; a conflict goes to `claude-fix`.
+- **Approved PRs stay current**: an approved PR of yours that falls behind a base requiring up-to-date branches gets GitHub's
+  update-branch once its checks are done.
+- **Fixed** on your own card: `claude-fix`'s summary (Done, Left, Failing), so you know what it did after its tab closed.
 - **Finished tabs close**: a review or fix tab whose run ended closes about 10 minutes later, unless it is the tab you have
   selected or pinned.
 - **Self-check on your own PRs**: Skim / Deep there post nothing; the review is written as a fix list to `reviews/<repo>-<n>.md`

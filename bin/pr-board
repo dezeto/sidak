@@ -254,11 +254,12 @@ since_path = os.path.join(os.path.dirname(state_path), "selfcheck-since")
 if not os.path.exists(since_path): open(since_path, "w").write(str(int(now)))
 since = int(open(since_path).read().strip() or now)
 OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:created-asc", type: ISSUE, first: 50) { nodes { ... on PullRequest {
-  number isDraft createdAt updatedAt reviewDecision headRefOid mergeable repository { name nameWithOwner } author { login }
+  number isDraft createdAt updatedAt reviewDecision headRefOid mergeable mergeStateStatus baseRefName headRefName repository { name nameWithOwner } author { login }
   commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state contexts(first: 100) { nodes {
     __typename ... on CheckRun { name databaseId status conclusion detailsUrl } ... on StatusContext { state } } } } } } }
   reviewThreads(first: 100) { nodes { isResolved comments(last: 1) { nodes { createdAt author { login } } } } }
   latestReviews(first: 20) { nodes { state submittedAt } }
+  baseChanges: timelineItems(itemTypes: [BASE_REF_CHANGED_EVENT], last: 1) { nodes { ... on BaseRefChangedEvent { previousRefName currentRefName createdAt } } }
   timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
 iso = lambda text: datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
 def ready_at(pr): return iso((pr["timelineItems"]["nodes"] or [pr])[-1]["createdAt"])
@@ -278,7 +279,13 @@ log = json.load(open(log_path)) if os.path.exists(log_path) else []
 def note(pr, kind, text, **extra): log.append({"at": int(now * 1000), "kind": kind, "pr": key(pr), "text": text, **extra})
 def save_log():
     if os.environ.get("DRY"): return
-    kept = [e for e in log if e["at"] >= (now - 7 * 86400) * 1000][-300:]
+    # claude-fix adds its summary to the file while this tick runs: merge into a fresh read, so neither write loses the other's.
+    fresh = json.load(open(log_path)) if os.path.exists(log_path) else []
+    index = {(e["pr"], e["at"], e["kind"]): e for e in fresh}
+    for e in log:
+        if (e["pr"], e["at"], e["kind"]) in index: index[(e["pr"], e["at"], e["kind"])].update({k: v for k, v in e.items() if k not in index[(e["pr"], e["at"], e["kind"])]})
+        else: fresh.append(e)
+    kept = sorted((e for e in fresh if e["at"] >= (now - 7 * 86400) * 1000), key=lambda e: e["at"])[-300:]
     open(log_path + ".tmp", "w").write(json.dumps(kept)); os.replace(log_path + ".tmp", log_path)
 # A fix that has finished: what it pushed, from the head it started on to the PR's head now.
 heads = {key(pr): pr for pr in own_prs}
@@ -342,10 +349,54 @@ def why_fix(pr, ci):
     return ", ".join(why)
 # A flaky failure gets its failed jobs rerun instead, once per head commit (autofix.json "<key> rerun"): no tokens, and claude-fix only
 # sees real failures. Failing again after the rerun, it goes to claude-fix.
-fixes, reruns = [], []
+# Stack follow-through: my PR retargeted onto its base's base (GitHub does that when the PR under it merges and its branch goes) still
+# carries that PR's commits, which squash-merged under other shas. Rebased onto the new base without them, in a detached worktree
+# (my checkouts stay as they are), and force-pushed with a lease on the head GitHub showed. Once per retarget. "conflicts" hands it
+# to claude-fix; None when there is nothing to drop.
+def restack(pr):
+    event = (pr["baseChanges"]["nodes"] or [None])[-1]
+    if not event or event["currentRefName"] != pr["baseRefName"] or event["previousRefName"] == pr["baseRefName"]: return None, None
+    if event["createdAt"] in fixed.get(key(pr) + " stack", []): return None, None
+    nwo, base, head = pr["repository"]["nameWithOwner"], pr["baseRefName"], pr["headRefName"]
+    below = subprocess.run(["gh", "pr", "list", "-R", nwo, "--head", event["previousRefName"], "--state", "merged", "--json", "number,commits",
+                            "--jq", ".[0] | {number, oids: [.commits[].oid]}"], capture_output=True, text=True)
+    below = json.loads(below.stdout or "null") if below.returncode == 0 else None
+    if not below: return None, None
+    if os.environ.get("DRY"): return "dry run", below["number"]
+    fixed.setdefault(key(pr) + " stack", []).append(event["createdAt"])
+    checkout = os.path.join(os.path.expanduser(config["repos"]), pr["repository"]["name"])
+    git = lambda *args, where=checkout: subprocess.run(["git", "-C", where, *args], capture_output=True, text=True)
+    git("fetch", "origin", base, head)
+    upstream = next((c for c in git("rev-list", f"origin/{base}..origin/{head}").stdout.split() if c in below["oids"]), None)
+    if not upstream: return None, None
+    tree = os.path.join(checkout, ".claude", "worktrees", f'restack-{pr["number"]}')
+    git("worktree", "remove", "--force", tree)
+    if git("worktree", "add", "--detach", tree, f"origin/{head}").returncode: return "conflicts", below["number"]
+    done = git("rebase", "--onto", f"origin/{base}", upstream, where=tree).returncode == 0
+    if done: done = git("push", f'--force-with-lease={head}:{pr["headRefOid"]}', "origin", f"HEAD:refs/heads/{head}", where=tree).returncode == 0
+    else: git("rebase", "--abort", where=tree)
+    git("worktree", "remove", "--force", tree)
+    return ("rebased" if done else "conflicts"), below["number"]
+# An approved PR of mine that fell behind its base (the repo wants it up to date): GitHub's update-branch, once per head, once its
+# checks are done (an update restarts them). No tokens, nothing for me to pull: the merge commit is GitHub's.
+def behind(pr):
+    rollup = last_commit(pr).get("statusCheckRollup") or {}
+    return (pr.get("reviewDecision") == "APPROVED" and pr.get("mergeStateStatus") == "BEHIND" and rollup.get("state") != "PENDING"
+            and pr["headRefOid"] not in fixed.get(key(pr) + " update", []))
+fixes, reruns, touched = [], [], False
 for pr in own_prs:
     runs = fixed.get(key(pr), [])
-    if not eligible(pr) or state.get(key(pr), {}).get("state") == "running" or pr["headRefOid"] in runs or len(runs) >= 3: continue
+    if not eligible(pr) or state.get(key(pr), {}).get("state") == "running": continue
+    stacked, below = restack(pr)
+    if stacked == "rebased":
+        note(pr, "restack", f"Rebased onto {pr['baseRefName']} after #{below} merged"); touched = True; continue
+    if stacked == "dry run": print(f'would restack {key(pr)} after #{below}', file=sys.stderr); continue
+    if behind(pr) and not os.environ.get("DRY"):
+        fixed.setdefault(key(pr) + " update", []).append(pr["headRefOid"]); touched = True
+        if subprocess.run(["gh", "api", "-X", "PUT", f'repos/{pr["repository"]["nameWithOwner"]}/pulls/{pr["number"]}/update-branch',
+                           "-f", f'expected_head_sha={pr["headRefOid"]}'], capture_output=True).returncode == 0:
+            note(pr, "update", f"Updated from {pr['baseRefName']}"); continue
+    if pr["headRefOid"] in runs or len(runs) >= 3: continue
     ci, run_ids = checks(pr)
     if ci == "flaky" and pr["headRefOid"] not in fixed.get(key(pr) + " rerun", []):
         if not os.environ.get("DRY"):
@@ -354,9 +405,11 @@ for pr in own_prs:
         reruns.append(f'{pr["repository"]["name"]}#{pr["number"]}')
         note(pr, "rerun", "Reran CI's flaky jobs")
         ci = None
-    if why := why_fix(pr, "failing" if ci == "flaky" else ci): fixes.append((pr, why))
-if reruns:
-    print(f'reran flaky CI on {", ".join(reruns)}', file=sys.stderr)
+    why = why_fix(pr, "failing" if ci == "flaky" else ci)
+    if stacked == "conflicts": why = ", ".join(filter(None, [f"stack conflicts after #{below} merged", why.replace("conflicts", "").strip(", ")]))
+    if why: fixes.append((pr, why))
+if reruns: print(f'reran flaky CI on {", ".join(reruns)}', file=sys.stderr)
+if reruns or touched:
     if not os.environ.get("DRY"): open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
 mine = [pr for pr in mine if all(pr is not other for other, _ in fixes)]  # its fix comes first; the self-check follows the fix's push
 todo = mine + todo
