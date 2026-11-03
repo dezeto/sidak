@@ -255,7 +255,8 @@ if not os.path.exists(since_path): open(since_path, "w").write(str(int(now)))
 since = int(open(since_path).read().strip() or now)
 OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:created-asc", type: ISSUE, first: 50) { nodes { ... on PullRequest {
   number isDraft createdAt updatedAt reviewDecision headRefOid mergeable repository { name nameWithOwner } author { login }
-  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state } } } }
+  commits(last: 1) { nodes { commit { committedDate statusCheckRollup { state contexts(first: 100) { nodes {
+    __typename ... on CheckRun { name databaseId status conclusion detailsUrl } ... on StatusContext { state } } } } } } }
   reviewThreads(first: 100) { nodes { isResolved comments(last: 1) { nodes { createdAt author { login } } } } }
   latestReviews(first: 20) { nodes { state submittedAt } }
   timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
@@ -285,23 +286,61 @@ def asks(pr):
     marks = [iso(c["createdAt"]) for c in lasts if (c["author"] or {}).get("login") != me]
     marks += [iso(r["submittedAt"]) for r in pr["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"] and iso(r["submittedAt"]) > pushed]
     return bool(marks) and now - max(marks) >= 3600
-def why_fix(pr):
+# Failing checks, once every check is done: "flaky" (with the Actions run ids to rerun) when each failed job is an infrastructure fault
+# (a lost or killed runner, a timeout, a full disk, a job that never started), else "failing"; None while green or still running.
+# ponytail: the first 100 checks only, and a regex over the failed jobs' annotations and last log lines; widen INFRA as new faults show.
+import re
+INFRA = re.compile(r"runner has received a shutdown signal|lost communication with the server|exceeded the maximum execution time|"
+                   r"no space left on device|ENOSPC|The operation was canceled|The job was not started", re.I)
+def checks(pr):
+    rollup = last_commit(pr).get("statusCheckRollup") or {}
+    if rollup.get("state") not in ("FAILURE", "ERROR"): return None, set()
+    nodes = rollup["contexts"]["nodes"]
+    if any(c.get("status", "COMPLETED") != "COMPLETED" or c.get("state") in ("PENDING", "EXPECTED") for c in nodes): return None, set()
+    if any(c.get("state") in ("FAILURE", "ERROR") for c in nodes): return "failing", set()  # a commit status: nothing to rerun
+    runs = set()
+    for c in nodes:
+        if c.get("conclusion") not in ("FAILURE", "TIMED_OUT", "STARTUP_FAILURE"): continue
+        run = re.search(r"/actions/runs/(\d+)/job/", c.get("detailsUrl") or "")
+        if not run: return "failing", set()
+        # A gatekeeper check (crm's merge-gatekeeper) fails because another one did: rerun with it, never the reason.
+        if c["conclusion"] == "FAILURE" and "gatekeeper" not in (c.get("name") or ""):
+            nwo = pr["repository"]["nameWithOwner"]
+            notes = subprocess.run(["gh", "api", f"repos/{nwo}/check-runs/{c['databaseId']}/annotations", "--jq", ".[].message"], capture_output=True, text=True).stdout
+            if not INFRA.search(notes):
+                log = subprocess.run(["gh", "api", f"repos/{nwo}/actions/jobs/{c['databaseId']}/logs"], capture_output=True, text=True).stdout
+                if not INFRA.search("\n".join(log.splitlines()[-300:])): return "failing", set()
+        runs.add(run.group(1))
+    return ("flaky", runs) if runs else (None, set())
+def why_fix(pr, ci):
     why = []
-    if (last_commit(pr).get("statusCheckRollup") or {}).get("state") in ("FAILURE", "ERROR"): why.append("failing checks")
+    if ci == "failing": why.append("failing checks")
     if pr.get("mergeable") == "CONFLICTING": why.append("conflicts")
     if asks(pr): why.append("change requests")
     return ", ".join(why)
-fixes = []
+# A flaky failure gets its failed jobs rerun instead, once per head commit (autofix.json "<key> rerun"): no tokens, and claude-fix only
+# sees real failures. Failing again after the rerun, it goes to claude-fix.
+fixes, reruns = [], []
 for pr in own_prs:
     runs = fixed.get(key(pr), [])
     if not eligible(pr) or state.get(key(pr), {}).get("state") == "running" or pr["headRefOid"] in runs or len(runs) >= 3: continue
-    if why := why_fix(pr): fixes.append((pr, why))
+    ci, run_ids = checks(pr)
+    if ci == "flaky" and pr["headRefOid"] not in fixed.get(key(pr) + " rerun", []):
+        if not os.environ.get("DRY"):
+            for run in run_ids: subprocess.run(["gh", "run", "rerun", run, "--failed", "-R", pr["repository"]["nameWithOwner"]], capture_output=True)
+        fixed.setdefault(key(pr) + " rerun", []).append(pr["headRefOid"])
+        reruns.append(f'{pr["repository"]["name"]}#{pr["number"]}')
+        ci = None
+    if why := why_fix(pr, "failing" if ci == "flaky" else ci): fixes.append((pr, why))
+if reruns:
+    print(f'reran flaky CI on {", ".join(reruns)}', file=sys.stderr)
+    if not os.environ.get("DRY"): open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
 mine = [pr for pr in mine if all(pr is not other for other, _ in fixes)]  # its fix comes first; the self-check follows the fix's push
 todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and now * 1000 - pr["movedAt"] >= 3600 * 1000]
 todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
-if not todo and not fixes: sys.exit(print("auto on (nothing to review)"))
+if not todo and not fixes: sys.exit(print(f'auto on ({"reran CI on " + ", ".join(reruns) if reruns else "nothing to review"})'))
 # Smart depth: Deep (tests and mutations) where a missed bug costs most, a Skim for the rest. A PR is risky when a changed file matches
 # one of these, or when it changes more than 500 lines.
 import re
@@ -345,6 +384,29 @@ PY
   (( ! $#failed ))
 }
 
+# Finished review and fix tabs (cmux workspaces "review <repo>#<n>" / "fix <repo>#<n>" whose state.json entry is not running) close
+# 10 minutes after a tick first sees them idle, kept in tabs-idle.json; the tab I have selected, or pinned, stays. Every tick, Auto on or off.
+tidy() {
+  CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password 2>/dev/null) \
+    python3 - $STATE $SIDAK_DIR/tabs-idle.json $ORG <<'PY'
+import json, os, re, subprocess, sys, time
+state_path, idle_path, org = sys.argv[1:]
+cmux = "/Applications/cmux.app/Contents/Resources/bin/cmux"
+out = subprocess.run([cmux, "--json", "workspace", "list"], capture_output=True, text=True)
+if out.returncode: sys.exit()
+state = json.load(open(state_path))
+seen = json.load(open(idle_path)) if os.path.exists(idle_path) else {}
+idle, now = {}, time.time()
+for ws in json.loads(out.stdout)["workspaces"]:
+    title = re.fullmatch(r"(?:review|fix) (\S+)#(\d+)", ws.get("custom_title") or "")
+    if not title or ws.get("selected") or ws.get("pinned") or state.get(f"{org}/{title[1]}#{title[2]}", {}).get("state") == "running": continue
+    idle[ws["ref"]] = seen.get(ws["ref"], now)
+    if now - idle[ws["ref"]] >= 600 and subprocess.run([cmux, "close-workspace", "--workspace", ws["ref"], "--force"], capture_output=True).returncode == 0:
+        del idle[ws["ref"]]
+open(idle_path + ".tmp", "w").write(json.dumps(idle)); os.replace(idle_path + ".tmp", idle_path)
+PY
+}
+
 status() {
   print "run: $(entry state) $(entry depth)"
   gh api repos/$ORG/$repo/pulls/$n/reviews --jq "[.[] | select(.user.login == \"$ME\")] | last
@@ -357,7 +419,7 @@ status() {
 case $cmd in
   board) board ;;
   learn) learn ;;
-  auto) auto ;;
+  auto) tidy; auto ;;
   quick|review) start ;;
   status) status ;;
   wait) while [[ $(entry state) == running ]]; do sleep 30; done; status ;;
