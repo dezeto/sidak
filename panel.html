@@ -109,7 +109,9 @@
   :root[data-remote] .pr { margin: 0 16px; padding: 12px 14px; background-color: var(--group); }
   :root[data-remote] .pr:not([data-first]) { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
   /* data-first / data-last: the first and last shown row of each run (app/remote.js), so a search that hides rows keeps the corners. */
-  :root[data-remote] .pr[data-plain]:not([data-first]) { background-position: 14px 0; background-size: calc(100% - 14px) 0.5px; }
+  :root[data-remote] .pr[data-plain]:not([data-first]) { background-position: 22px 0; background-size: calc(100% - 22px) 0.5px; }
+  :root[data-remote] .pr { padding-left: 22px; box-shadow: none; }
+  :root[data-remote] .pr::before { left: 9px; top: 13px; bottom: 13px; }
   :root[data-remote] .pr[data-first] { border-top-left-radius: 22px; border-top-right-radius: 22px; }
   :root[data-remote] .pr[data-last] { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
   :root[data-remote] details.stale > summary { margin: 22px 16px 0; padding: 0 16px; min-height: 50px; border-radius: 22px; background: var(--group); font-size: 15px; font-weight: 600; color: var(--lg-ink); }
@@ -596,13 +598,6 @@
   .stack > .pr + .pr .claude::before, .stack > .pr:not(:last-child) .claude::after {
     content: ''; position: absolute; left: calc(50% - 0.75px); width: 1.5px; height: 200px; background: color-mix(in srgb, var(--lg-ink-muted) 45%, transparent);
   }
-  /* Cards without their icon (data-plain) keep the link as a line down the stack's left margin (the phone's grouped card already joins them). */
-  :root:not([data-remote]) .stack > .pr[data-plain] {
-    background-image: linear-gradient(color-mix(in srgb, var(--lg-ink-muted) 45%, transparent), color-mix(in srgb, var(--lg-ink-muted) 45%, transparent));
-    background-repeat: no-repeat; background-position: 9px 0; background-size: 1.5px 100%;
-  }
-  :root:not([data-remote]) .stack > .pr[data-plain]:first-of-type { background-position: 9px 50%; background-size: 1.5px 50%; }
-  :root:not([data-remote]) .stack > .pr[data-plain]:last-child { background-size: 1.5px 50%; }
   .stack > .pr + .pr .claude::before { bottom: calc(100% + 3px); }
   .stack > .pr:not(:last-child) .claude::after { top: calc(100% + 3px); }
   .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
@@ -627,8 +622,8 @@
   /* Rows, 52 px: a status dot, the title over a meta line (one status word, repo #n, author), then the age; hover or j/k focus swaps
      the age for the buttons. */
   .pr {
-    display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; row-gap: 2px; align-items: center;
-    box-sizing: border-box; min-height: 52px; padding: 8px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
+    display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; row-gap: 4px; align-items: center;
+    box-sizing: border-box; min-height: 60px; padding: 11px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
     transition: background-color var(--lg-duration-fast);
   }
   /* The card under the pointer is data-hot (panel.js), not :hover: WebKit misses some :hover restyles under rows in folds, which left the
@@ -652,6 +647,16 @@
   .pr[data-claude='failed'], .pr[data-group='needs'] { --status: var(--dot-red); }
   .pr[data-follow] { --status: var(--dot-amber); }
   .pr[data-group='draft'] { --status: var(--grey); }
+  /* The stripe: a rounded bar down each card's left edge in its state's colour (--status; in Reviewed my verdict's), so the state reads
+     at a glance. A stack's bars run the cards' full height and join into one line. */
+  .pr { position: relative; --stripe: var(--status); }
+  .pr[data-verdict='changes']:not([data-follow]) { --stripe: var(--dot-red); }
+  .pr[data-verdict='commented']:not([data-follow]) { --stripe: var(--grey); }
+  .pr::before { content: ''; position: absolute; left: 8px; top: 11px; bottom: 11px; width: 4px; border-radius: 2px; background: var(--stripe); }
+  .stack > .pr::before { top: 0; bottom: 0; border-radius: 0; }
+  .stack > .pr:first-of-type::before { top: 11px; border-radius: 2px 2px 0 0; }
+  .stack > .pr:last-child::before { bottom: 11px; border-radius: 0 0 2px 2px; }
+  .pr + .pr { box-shadow: inset 0 0.5px 0 var(--lg-border-subtle); }
   .title, .meta { grid-column: 2; margin: 0 10px 0 10px; }
   /* Up to two lines of title, then an ellipsis. */
   .title { grid-row: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; }

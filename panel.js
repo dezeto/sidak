@@ -462,6 +462,8 @@ function prRow(pr) {
     });
   };
   row.dataset.claude = pr.claude ?? '';
+  // My verdict colours the card's stripe in Reviewed: red changes, grey comments, green approved.
+  if (pr.claude === 'reviewed' && pr.verdict) row.dataset.verdict = pr.verdict;
   // The status icon shows only when it says what its section does not: a run going (a click opens cmux), a failed one (a click
   // retries) or a PR back since my review. Otherwise the section header says it, and the title takes the icon's room.
   if (pr.claude !== 'running' && pr.claude !== 'failed' && !pr.followUp) row.dataset.plain = '';
