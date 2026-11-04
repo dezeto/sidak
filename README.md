@@ -74,6 +74,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   9:00-18:00, at most twice per PR. Auto never merges.
 - **Morning brief**: the first sync after 9:00 on a weekday (until noon) posts one Mac notification: Inbox PRs to review, your
   PRs ready to merge, and what Auto did since the last brief. A click opens the board. Other notifications stay off.
+- **First reviewers**: with Auto on, your ready PR with nobody requested gets its repo's `reviewers` from `config.json`, once,
+  after its self-check.
 - **Board reloads itself** when its code changes on disk, on the Mac and the phone, once no sheet, menu or search is open.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it
   has been quiet for an hour (re-requested: a Skim on the next sync); a failed Auto run is retried once an hour later; no daily limit unless Auto per day sets one.
@@ -165,6 +167,7 @@ extension and put its id in `config.json`, and set the cmux socket password.
 - `org`, `login`: the GitHub org whose PRs you review, and your login.
 - `repos`: the folder that holds your `<repo>` checkouts (`~` allowed).
 - `reviewable`: the repo names the board offers reviews for; the first is the default for a bare PR number.
+- `reviewers` (optional): per repo name, the logins and `org/team` slugs Auto requests on your ready PR that has no reviewers yet.
 - `rulesRepo`: a repo whose Claude memory every review loads, or `""`.
 - `profiles`, `defaultProfile`: Claude profile name to `CLAUDE_CONFIG_DIR` (`""` is the default `~/.claude`).
 - `extensionId`: the unpacked extension's id, for the native-messaging host.

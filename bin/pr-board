@@ -445,11 +445,28 @@ todo = mine + todo
 # A re-request is the author saying it is ready: a Skim on the next tick. Pushes alone wait for an hour's quiet.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and (pr["asked"] or now * 1000 - pr["movedAt"] >= 3600 * 1000)]
 todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
+# First reviewers: my ready PR, in a repo with config.json reviewers (repo name → logins and org/team slugs), that has nobody
+# requested and no review yet gets that list, once per PR (autofix.json "<key> ask"), after its fix and self-check when one is due
+# (a failed self-check waits for its retry).
+requested = []
+for pr in own_prs:
+    who = config.get("reviewers", {}).get(pr["repository"]["name"])
+    if (not who or pr["isDraft"] or not pr["repository"]["nameWithOwner"].startswith(config["org"] + "/") or pr in mine
+            or pr["reviewRequests"]["totalCount"] or pr["latestReviews"]["nodes"] or key(pr) + " ask" in fixed
+            or any(pr is other for other, _ in fixes) or state.get(key(pr), {}).get("state") == "running"
+            or state.get(key(pr), {}).get("state") == "failed" and key(pr) + " retry" not in fixed): continue
+    if os.environ.get("DRY"): print(f'would request {", ".join(who)} on {key(pr)}', file=sys.stderr); continue
+    fixed[key(pr) + " ask"] = who
+    if subprocess.run(["gh", "pr", "edit", str(pr["number"]), "-R", pr["repository"]["nameWithOwner"], "--add-reviewer", ",".join(who)],
+                      capture_output=True).returncode == 0:
+        requested.append(f'{pr["repository"]["name"]}#{pr["number"]}')
+        note(pr, "request", f'Requested {", ".join(w.split("/")[-1] for w in who)}')
 def save_fixed():
     if not os.environ.get("DRY"): open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
-if nudged: save_fixed()
+if nudged or requested: save_fixed()
 if not todo and not fixes:
-    save_log(); did = [*(["reran CI on " + ", ".join(reruns)] if reruns else []), *(["nudged " + ", ".join(nudged)] if nudged else [])]
+    save_log(); did = [*(["reran CI on " + ", ".join(reruns)] if reruns else []), *(["nudged " + ", ".join(nudged)] if nudged else []),
+           *(["requested reviewers on " + ", ".join(requested)] if requested else [])]
     sys.exit(print(f'auto on ({"; ".join(did) or "nothing to review"})'))
 # Smart depth: Deep (tests and mutations) where a missed bug costs most, a Skim for the rest. A PR is risky when a changed file matches
 # one of these, or when it changes more than 500 lines.
@@ -588,7 +605,7 @@ import collections, json, os, sys
 log = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else []
 done = collections.Counter(e["kind"] for e in log if e["at"] >= int(sys.argv[2]) * 1000 and not e.get("manual"))
 words = {"review": ("review", "reviews"), "fix": ("fix", "fixes"), "rerun": ("CI rerun", "CI reruns"), "nudge": ("nudge", "nudges"),
-         "restack": ("restack", "restacks"), "update": ("branch update", "branch updates")}
+         "restack": ("restack", "restacks"), "request": ("reviewer request", "reviewer requests"), "update": ("branch update", "branch updates")}
 print(", ".join(f"{n} {words[kind][n != 1]}" for kind, n in done.items() if kind in words))
 PY
 )

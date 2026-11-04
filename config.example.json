@@ -3,6 +3,7 @@
   "login": "your-github-login",
   "repos": "~/Documents/_git/cc",
   "reviewable": ["crm"],
+  "reviewers": { "crm": ["your-github-org/your-team"] },
   "rulesRepo": "crm",
   "profiles": { "cwc": "~/.claude-work", "cc": "" },
   "defaultProfile": "cwc",
