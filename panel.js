@@ -389,7 +389,7 @@ function prRow(pr) {
   // The status word: Auto review on a review auto started that is still running, or why a PR is back since my review (both amber,
   // like its dot), else my verdict on one I reviewed, else its review state.
   // How and by whom it was reviewed goes in the tooltip.
-  const live = pr.claude === 'running' && pr.auto ? 'Auto review' : { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
+  const live = pr.claude === 'running' ? null : { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
   const verdict = pr.claude === 'reviewed' ? VERDICTS[pr.verdict] : null;
   // Under Approved (reviewedColumn) the heading is my verdict, so there the word is only the TL;DR's toggle.
   const underApproved = !live && pr.claude === 'reviewed' && pr.verdict === 'approved';
@@ -464,9 +464,6 @@ function prRow(pr) {
   row.dataset.claude = pr.claude ?? '';
   // My verdict colours the card's stripe in Reviewed: red changes, grey comments, green approved.
   if (pr.claude === 'reviewed' && pr.verdict) row.dataset.verdict = pr.verdict;
-  // The status icon shows only when it says what its section does not: a run going (a click opens cmux), a failed one (a click
-  // retries) or a PR back since my review. Otherwise the section header says it, and the title takes the icon's room.
-  if (pr.claude !== 'running' && pr.claude !== 'failed' && !pr.followUp) row.dataset.plain = '';
   // Back in the Inbox after my review: its dot says to review again.
   if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
@@ -499,6 +496,17 @@ function prRow(pr) {
   };
   const remote = document.documentElement.hasAttribute('data-remote');
   claude.onclick = remote ? explain : pr.claude === 'failed' ? skim : pr.claude === 'running' ? openInCmux(null) : null;
+  // The icon is hidden (panel.html): a run going or failed says so in a word at the front of the meta line, which acts as the icon
+  // did. Running (Auto review when Auto started it) opens its cmux tab; Failed retries with a Skim; on the phone both only explain.
+  if (pr.claude === 'running' || pr.claude === 'failed') {
+    const text = pr.claude === 'failed' ? 'Failed · Retry' : pr.auto && !pr.mine ? 'Auto review' : 'Running';
+    const word = el('button', { type: 'button', className: `run-word ${pr.claude}`, textContent: text, title: marks.join(' · ') });
+    word.onclick = (event) => {
+      event.stopPropagation();
+      claude.onclick?.(event);
+    };
+    info.prepend(word);
+  }
   const actions = row.querySelector('.actions');
   if (pr.mine) {
     // My PR: the status icon says what it waits on (statusMark), the reason is the second line, the next step a button in front of
@@ -509,7 +517,7 @@ function prRow(pr) {
     // After a self-check, Copy fix list copies its fix list's path, to hand to Claude (Fix reads it by itself); with Fixed it sits on a
     // line of its own under the meta line, so the facts keep the width.
     row.querySelector('.state').textContent = '';
-    const chips = el('span', { className: 'chips' });
+    const chips = el('span', { className: 'pr-chips' });
     if (pr.report) {
       const copy = el('button', { type: 'button', className: 'state', textContent: 'Copy fix list', title: pr.report });
       copy.dataset.live = '';
@@ -522,7 +530,7 @@ function prRow(pr) {
       };
       chips.append(copy);
     }
-    info.replaceChildren(...words(`${pr.repo} #${pr.number}`, ...reason.split(' · ')));
+    info.replaceChildren(...info.querySelectorAll('.run-word'), ...words(`${pr.repo} #${pr.number}`, ...reason.split(' · ')));
     const [label, tip, key] = AUTHOR_ACTIONS[action] ?? [];
     if (label) {
       const button = el('button', { className: `review ${action}`, type: 'button', textContent: label, title: tip, ariaKeyShortcuts: key });

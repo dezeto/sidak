@@ -107,9 +107,8 @@
   :root[data-remote] :is(.column, .stack) > h2 { padding: 22px 20px 8px; font-size: 20px; font-weight: 700; line-height: 25px; letter-spacing: 0; color: var(--lg-ink); }
   :root[data-remote] :is(.column, .stack) > h2::after, :root[data-remote] details.stale > summary::after { display: none; }
   :root[data-remote] .pr { margin: 0 16px; padding: 12px 14px; background-color: var(--group); }
-  :root[data-remote] .pr:not([data-first]) { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
+  :root[data-remote] .pr:not([data-first]) { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 22px 0; background-size: calc(100% - 22px) 0.5px; }
   /* data-first / data-last: the first and last shown row of each run (app/remote.js), so a search that hides rows keeps the corners. */
-  :root[data-remote] .pr[data-plain]:not([data-first]) { background-position: 22px 0; background-size: calc(100% - 22px) 0.5px; }
   :root[data-remote] .pr { padding-left: 22px; box-shadow: none; }
   :root[data-remote] .pr::before { left: 9px; top: 13px; bottom: 13px; }
   :root[data-remote] .pr[data-first] { border-top-left-radius: 22px; border-top-right-radius: 22px; }
@@ -595,11 +594,6 @@
   .stack > h2 .merge-stack { order: 1; padding: 0; font-size: 11px; font-weight: 600; color: var(--lg-accent); }
   .stack > h2 .merge-stack:disabled { color: var(--lg-ink-muted); opacity: 0.6; cursor: default; }
   .stack > .pr { overflow: hidden; }
-  .stack > .pr + .pr .claude::before, .stack > .pr:not(:last-child) .claude::after {
-    content: ''; position: absolute; left: calc(50% - 0.75px); width: 1.5px; height: 200px; background: color-mix(in srgb, var(--lg-ink-muted) 45%, transparent);
-  }
-  .stack > .pr + .pr .claude::before { bottom: calc(100% + 3px); }
-  .stack > .pr:not(:last-child) .claude::after { top: calc(100% + 3px); }
   .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
   /* Stale rows fold away at the end of a list, outside its count; a search opens the fold. */
   details.stale > summary { cursor: pointer; }
@@ -622,7 +616,7 @@
   /* Rows, 52 px: a status dot, the title over a meta line (one status word, repo #n, author), then the age; hover or j/k focus swaps
      the age for the buttons. */
   .pr {
-    display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; row-gap: 4px; align-items: center;
+    display: grid; grid-template-columns: 0 minmax(0, 1fr) auto auto; row-gap: 4px; align-items: center;
     box-sizing: border-box; min-height: 60px; padding: 11px 20px; color: inherit; text-decoration: none; scroll-margin-block: 72px 48px;
     transition: background-color var(--lg-duration-fast);
   }
@@ -650,6 +644,11 @@
   /* The stripe: a rounded bar down each card's left edge in its state's colour (--status; in Reviewed my verdict's), so the state reads
      at a glance. A stack's bars run the cards' full height and join into one line. */
   .pr { position: relative; --stripe: var(--status); }
+  /* A run going (review, self-check or fix): a blue stripe that breathes. */
+  .pr[data-claude='running'] { --stripe: var(--dot-blue); }
+  .pr[data-claude='running']::before { animation: stripe-breathe 1.6s ease-in-out infinite; }
+  @keyframes stripe-breathe { 50% { opacity: 0.35; } }
+  @media (prefers-reduced-motion: reduce) { .pr[data-claude='running']::before { animation: none; } }
   .pr[data-verdict='changes']:not([data-follow]) { --stripe: var(--dot-red); }
   .pr[data-verdict='commented']:not([data-follow]) { --stripe: var(--grey); }
   .pr::before { content: ''; position: absolute; left: 8px; top: 11px; bottom: 11px; width: 4px; border-radius: 2px; background: var(--stripe); }
@@ -657,16 +656,17 @@
   .stack > .pr:first-of-type::before { top: 11px; border-radius: 2px 2px 0 0; }
   .stack > .pr:last-child::before { bottom: 11px; border-radius: 0 0 2px 2px; }
   .pr + .pr { box-shadow: inset 0 0.5px 0 var(--lg-border-subtle); }
-  .title, .meta { grid-column: 2; margin: 0 10px 0 10px; }
+  .title, .meta { grid-column: 2; margin: 0 10px 0 0; }
   /* Up to two lines of title, then an ellipsis. */
   .title { grid-row: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; }
-  /* A card without a live status icon (panel.js data-plain): the section header names its state, so the title takes the icon's room. */
-  .pr[data-plain] { grid-template-columns: 0 minmax(0, 1fr) auto auto; }
-  .pr[data-plain] .claude { display: none; }
-  .pr[data-plain] :is(.title, .meta, .chips) { margin-left: 0; }
+  /* No status icon on a card: the stripe and the section header say the state (a run going or failed has a word, panel.js run-word). */
+  .pr > .claude { display: none; }
+  .info > .run-word { margin-right: 10px; padding: 0; font: inherit; font-weight: 600; color: var(--dot-blue); }
+  .info > .run-word.failed { color: var(--red); }
+  .info > .run-word:hover { text-decoration: underline; }
   /* Copy fix list and Fixed, on my own PR: a line under the meta line. */
-  .chips { grid-column: 2; grid-row: 3; display: flex; gap: 14px; margin: 1px 10px 0; font-size: 11.5px; line-height: 15px; }
-  .chips > :is(.state, button.state) { margin: 0; }
+  .pr-chips { grid-column: 2; grid-row: 3; display: flex; gap: 14px; margin: 1px 10px 0 0; font-size: 11.5px; line-height: 15px; }
+  .pr-chips > :is(.state, button.state) { margin: 0; }
   .pr[data-state='DRAFT'] { opacity: 0.7; }
   /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
