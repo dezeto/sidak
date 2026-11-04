@@ -24,7 +24,7 @@ func installHotKey(_ app: App) {
 let dir = URL(fileURLWithPath: Bundle.main.object(forInfoDictionaryKey: "SidakDir") as! String)
 // SIDAK_STATE points the watcher at a copy for a dry run (bin/pr-board, run from here, reads the same variable).
 let statePath = ProcessInfo.processInfo.environment["SIDAK_STATE"] ?? dir.appendingPathComponent("state.json").path
-// Notifications are off (the gauge shows runs as they go); true requests authorization and posts settled reviews again.
+// Review notifications are off (the gauge shows runs as they go); true posts settled reviews again. The morning brief always posts.
 let notify = false
 // The island is off: the pill keeps the plain count while reviews run (the gauge turns amber); true stretches it to "crm#123 Deep 4:05 +1".
 let island = false
@@ -75,7 +75,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
     embed(web, in: panel.contentView!)
     placeItem()
     UNUserNotificationCenter.current().delegate = self
-    if notify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, err in NSLog("notifications: %d %@", ok, err?.localizedDescription ?? "") } }
+    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { ok, err in NSLog("notifications: %d %@", ok, err?.localizedDescription ?? "") }
     watchState()
     // An item created while the menu bar is hidden (a fullscreen space in front) stays off-screen for good; re-place it when apps switch.
     NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { _ in
@@ -308,6 +308,7 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
   }
   func userNotificationCenter(_ c: UNUserNotificationCenter, didReceive r: UNNotificationResponse, withCompletionHandler done: @escaping () -> Void) {
     if let s = r.notification.request.content.userInfo["url"] as? String, let u = URL(string: s) { NSWorkspace.shared.open(u) }
+    if r.notification.request.content.userInfo["board"] != nil { DispatchQueue.main.async { self.show() } }
     done()
   }
   func userNotificationCenter(_ c: UNUserNotificationCenter, willPresent n: UNNotification, withCompletionHandler done: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -387,6 +388,17 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       let auto = self.zsh("bin/pr-board auto").0.split(separator: "\n").first.map(String.init) ?? ""
       NSLog("auto: %@", auto)
       let autoOn = auto.hasPrefix("auto on")
+      // The morning brief (pr-board brief): one line on the first tick after 9:00 on a weekday; a click opens the board.
+      let brief = self.zsh("INBOX=\(toReview) bin/pr-board brief").0.trimmingCharacters(in: .whitespacesAndNewlines)
+      if !brief.isEmpty {
+        let content = UNMutableNotificationContent()
+        content.title = "Good morning"
+        content.body = brief
+        content.userInfo = ["board": true]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "brief", content: content, trigger: nil)) { err in
+          NSLog("brief %@: %@", brief, err?.localizedDescription ?? "ok")
+        }
+      }
       DispatchQueue.main.async {
         (self.toReview, self.running, self.reviewed, self.autoOn) = (toReview, running, reviewed, autoOn)
         self.showTitle()

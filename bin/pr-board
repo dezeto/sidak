@@ -571,6 +571,31 @@ if done: print(("would prune " if dry else "pruned ") + ", ".join(done), file=sy
 PY
 }
 
+# Morning brief, for Sidak.app's notification: once a day, on the first tick from 9:00 to 12:00 on a weekday, one line with the Inbox
+# PRs to review ($INBOX, Sidak.app's count), my PRs ready to merge, and what Auto did since the last brief (autolog.json; the first
+# one looks back 18 hours). brief-day keeps the last brief's time. Prints nothing the rest of the day.
+brief() {
+  local file=$SIDAK_DIR/brief-day now=$(date +%s) last
+  (( $(date +%u) <= 5 && $(date +%k) >= 9 && $(date +%k) < 12 )) || return 0
+  [[ -f $file ]] && last=$(<$file)
+  [[ -n $last && $(date -r $last +%F) == $(date +%F) ]] && return 0
+  # Ready as the board's Ready tab: approved, not conflicting, checks green or none. GraphQL, not gh search: its check state lags.
+  local ready=$(gh api graphql -f query='{ search(query: "is:open is:pr author:@me archived:false draft:false review:approved", type: ISSUE, first: 50) {
+    nodes { ... on PullRequest { mergeable commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } } } } }' --jq '[.data.search.nodes[]
+    | select(.mergeable != "CONFLICTING" and (.commits.nodes[0].commit.statusCheckRollup.state // "SUCCESS") == "SUCCESS")] | length' 2>/dev/null)
+  local did=$(python3 - $SIDAK_DIR/autolog.json $(( last > now - 86400 ? last : now - 18 * 3600 )) <<'PY'
+import collections, json, os, sys
+log = json.load(open(sys.argv[1])) if os.path.exists(sys.argv[1]) else []
+done = collections.Counter(e["kind"] for e in log if e["at"] >= int(sys.argv[2]) * 1000 and not e.get("manual"))
+words = {"review": ("review", "reviews"), "fix": ("fix", "fixes"), "rerun": ("CI rerun", "CI reruns"), "nudge": ("nudge", "nudges"),
+         "restack": ("restack", "restacks"), "update": ("branch update", "branch updates")}
+print(", ".join(f"{n} {words[kind][n != 1]}" for kind, n in done.items() if kind in words))
+PY
+)
+  print $now > $file
+  print -r -- "${INBOX:-0} to review · ${ready:-0} ready to merge${did:+ · Auto did $did}"
+}
+
 status() {
   print "run: $(entry state) $(entry depth)"
   gh api repos/$ORG/$repo/pulls/$n/reviews --jq "[.[] | select(.user.login == \"$ME\")] | last
@@ -586,6 +611,7 @@ case $cmd in
   auto) tidy; prune; auto ;;
   quick|review) start ;;
   status) status ;;
+  brief) brief ;;
   wait) while [[ $(entry state) == running ]]; do sleep 30; done; status ;;
   approve)
     gh api repos/$ORG/$repo/pulls/$n/reviews -f event=APPROVE -f body="$note" \

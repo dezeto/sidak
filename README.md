@@ -72,6 +72,8 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Auto nudge**: with Auto on, your ready PR whose pending reviewers have had a day since the last request or push, with nothing
   left on your side (checks green, no conflict, no open thread or change request), gets its reviewers asked again. Weekdays
   9:00-18:00, at most twice per PR. Auto never merges.
+- **Morning brief**: the first sync after 9:00 on a weekday (until noon) posts one Mac notification: Inbox PRs to review, your
+  PRs ready to merge, and what Auto did since the last brief. A click opens the board. Other notifications stay off.
 - **Board reloads itself** when its code changes on disk, on the Mac and the phone, once no sheet, menu or search is open.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it
   has been quiet for an hour (re-requested: a Skim on the next sync); a failed Auto run is retried once an hour later; no daily limit unless Auto per day sets one.
@@ -96,7 +98,7 @@ Two front ends share one page:
   its summary lands on the card as Fixed.
 - `pr-board`: the counts for the menu bar and the auto-review tick.
 
-`config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/`, `autofix.json`, `autolog.json` and `token.txt` are personal or live data and stay out of git.
+`config.json`, `state.json`, `settings.json`, `handoffs/`, `answers/`, `autofix.json`, `autolog.json`, `brief-day` and `token.txt` are personal or live data and stay out of git.
 
 ## Reading the board
 
