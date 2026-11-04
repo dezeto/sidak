@@ -914,8 +914,8 @@ async function render() {
     loadSpaces(),
     reviewState(),
     loadSettings(),
-    fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : [])).catch(() => []).then((log) => (autoLogEntries = log)),
     loadConfig(),
+    fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : [])).catch(() => []).then((log) => (autoLogEntries = log)),
   ]);
   config = { ...NO_CONFIG, ...file };
   save('config', config);
