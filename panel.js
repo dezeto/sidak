@@ -225,26 +225,27 @@ function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) =>
     el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: settings`, ariaExpanded: !settingsFold.hidden, onclick: () => toggleSettings() });
-  // A sign: an icon for a mode that is on (Auto, Phone), with its count when it has one; a tap opens the settings too.
-  const sign = (iconId, what, text = '') => {
+  // A sign: Auto and Phone by name, dimmed while off, so either state reads at a glance; a tap opens the settings too.
+  const sign = (iconId, what, text, on) => {
     const button = Object.assign(pick(text, what), { className: 'pick sign', ariaLabel: `${what}: settings` });
     button.prepend(icon(iconId));
+    if (!on) button.dataset.off = '';
     return button;
   };
   const profile = settings.profile || config.defaultProfile;
   // The settings chip: what a click runs with, profile · model · effort, in one capsule.
   footConfig.replaceChildren(...[
     Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
-    settings.auto?.on && (settings.autoCap
-      ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `${today.auto}/${settings.autoCap}`)
-      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`)),
-    // Phone access on: so an open tunnel is never forgotten.
-    phoneOn() && sign('i-phone', 'Phone access is on'),
+    !settings.auto?.on ? sign('i-auto', 'Auto review is off', 'Auto', false)
+      : settings.autoCap ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `Auto ${today.auto}/${settings.autoCap}`, true)
+      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`, 'Auto', true),
+    // Phone access: so an open tunnel is never forgotten. Only where a tunnel is set up (config.json remote).
+    config.remote?.team && sign('i-phone', `Phone access is ${phoneOn() ? 'on' : 'off'}`, 'Phone', phoneOn()),
   ].filter(Boolean));
   // Today's usage sits by the sync time, both muted on the right.
   Object.assign(used, {
     hidden: !today.tokens,
-    textContent: compact.format(today.tokens),
+    textContent: `${compact.format(today.tokens)} tokens`,
     title: `Tokens today's reviews used: ${today.tokens.toLocaleString()} new, plus ${today.cached.toLocaleString()} cache reads`,
   });
 }
@@ -655,6 +656,10 @@ function markActive(glide = false) {
   // The phone's tabs are as wide as their words: the lozenge there takes the open tab's measured place (--x, --w) instead.
   placeLozenge();
   for (const button of shown) tabsResize.observe(button); // and again whenever a tab's width changes (a count, a font)
+  // Next steps aside while its PR is already one of the open tab's first three cards: there it would only repeat them.
+  const next = document.querySelector('a.next');
+  const top = [...(list.querySelector('.column.active')?.querySelectorAll('.pr') ?? [])].slice(0, 3);
+  if (next) next.style.display = top.some((row) => row.href === next.href) ? 'none' : '';
   tabsBar.dataset.glide = glide ? 'move' : 'still';
   // The phone's large title (panel.html #foot::before) is the open tab.
   document.getElementById('foot').dataset.title = tab;
@@ -908,8 +913,11 @@ function renderHeader(space, index, syncStatus) {
   document.getElementById('space-title').textContent = title;
   const links = space ? countLinks(space) : 0;
   status.textContent = [space && `${links} ${links === 1 ? 'link' : 'links'}`, syncStatus].filter(Boolean).join(' · ');
-  // The status sits at the end of the footer, so a long sync error is cut off; the tooltip has the whole text.
+  // The status sits at the end of the footer, so a long sync error is cut off; the tooltip has the whole text. A plain sync time is
+  // the refresh button's tooltip on the Mac (data-time; the phone keeps it under its title), so the footer has room for words.
   status.title = status.textContent;
+  status.toggleAttribute('data-time', !space && /^\d/.test(syncStatus ?? ''));
+  refresh.title = `${status.dataset.time !== undefined ? `Synced ${syncStatus} · ` : ''}Sync PRs now (⇧R)`;
   status.dataset.error = String(syncStatus?.startsWith('Sync failed') ?? false);
   refresh.classList.remove('spinning');
 }

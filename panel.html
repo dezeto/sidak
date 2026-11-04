@@ -603,6 +603,13 @@
   .stack > .pr + .pr .claude::before, .stack > .pr:not(:last-child) .claude::after {
     content: ''; position: absolute; left: calc(50% - 0.75px); width: 1.5px; height: 200px; background: color-mix(in srgb, var(--lg-ink-muted) 45%, transparent);
   }
+  /* Cards without their icon (data-plain) keep the link as a line down the stack's left margin (the phone's grouped card already joins them). */
+  :root:not([data-remote]) .stack > .pr[data-plain] {
+    background-image: linear-gradient(color-mix(in srgb, var(--lg-ink-muted) 45%, transparent), color-mix(in srgb, var(--lg-ink-muted) 45%, transparent));
+    background-repeat: no-repeat; background-position: 9px 0; background-size: 1.5px 100%;
+  }
+  :root:not([data-remote]) .stack > .pr[data-plain]:first-of-type { background-position: 9px 50%; background-size: 1.5px 50%; }
+  :root:not([data-remote]) .stack > .pr[data-plain]:last-child { background-size: 1.5px 50%; }
   .stack > .pr + .pr .claude::before { bottom: calc(100% + 3px); }
   .stack > .pr:not(:last-child) .claude::after { top: calc(100% + 3px); }
   .empty { margin: 0; padding: 8px 20px 10px 40px; font-size: 12px; color: var(--lg-ink-muted); }
@@ -731,6 +738,10 @@
   #foot .run:hover { background: var(--hover); }
   #foot .sign { display: inline-flex; align-items: center; gap: 4px; }
   #foot .sign svg { width: 14px; height: 14px; }
+  #foot .sign[data-off] { opacity: 0.45; }
+  :root:not([data-remote]) #status[data-time] { display: none; }
+  :root:not([data-remote]) #used::after { content: none; }
+  :root:not([data-remote]) #used { margin-right: 0; }
   #status[data-error='true'] { color: var(--red); }
   #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
   #refresh .icon { width: 13px; height: 13px; }
