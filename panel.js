@@ -188,11 +188,6 @@ const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]')
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const capBox = document.getElementById('auto-cap');
 const quietSeg = document.querySelector('#settings [data-setting="quiet"]');
-// Quiet hours, as pr-board auto reads them: nights 22:00-08:00, week adds the weekend.
-function quietNow(now = new Date()) {
-  const night = now.getHours() >= 22 || now.getHours() < 8;
-  return (['night', 'week'].includes(settings.quiet) && night) || (settings.quiet === 'week' && [0, 6].includes(now.getDay()));
-}
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
 const vipPeople = document.getElementById('vip-people');
@@ -225,23 +220,11 @@ function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) =>
     el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: settings`, ariaExpanded: !settingsFold.hidden, onclick: () => toggleSettings() });
-  // A sign: Auto and Phone by name, dimmed while off, so either state reads at a glance; a tap opens the settings too.
-  const sign = (iconId, what, text, on) => {
-    const button = Object.assign(pick(text, what), { className: 'pick sign', ariaLabel: `${what}: settings` });
-    button.prepend(icon(iconId));
-    if (!on) button.dataset.off = '';
-    return button;
-  };
   const profile = settings.profile || config.defaultProfile;
   // The settings chip: what a click runs with, profile · model · effort, in one capsule.
-  footConfig.replaceChildren(...[
+  footConfig.replaceChildren(
     Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
-    !settings.auto?.on ? sign('i-auto', 'Auto review is off', 'Auto', false)
-      : settings.autoCap ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, `Auto ${today.auto}/${settings.autoCap}`, true)
-      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`, 'Auto', true),
-    // Phone access: so an open tunnel is never forgotten. Only where a tunnel is set up (config.json remote).
-    config.remote?.team && sign('i-phone', `Phone access is ${phoneOn() ? 'on' : 'off'}`, 'Phone', phoneOn()),
-  ].filter(Boolean));
+  );
   // Today's usage sits by the sync time, both muted on the right.
   Object.assign(used, {
     hidden: !today.tokens,
