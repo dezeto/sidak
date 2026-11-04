@@ -398,8 +398,7 @@ function prRow(pr) {
   row.dataset.state = pr.review;
   row.querySelector('.title').textContent = pr.title;
   row.querySelector('.time').textContent = ago(pr.updatedAt);
-  // The meta line is one status word, then repo #n and author, 10 px apart (CSS), no separators. A VIP author gets a gold star in
-  // front of the title.
+  // The meta line is one status word, then repo #n and author, 10 px apart (CSS), no separators.
   const info = row.querySelector('.info');
   const words = (...parts) => parts.filter(Boolean).map((text) => el('span', { textContent: text }));
   info.replaceChildren(...words(`${pr.repo} #${pr.number}`, pr.author));
@@ -408,10 +407,12 @@ function prRow(pr) {
   // How and by whom it was reviewed goes in the tooltip.
   const live = pr.claude === 'running' && pr.auto ? 'Auto review' : { requested: 'Re-requested you', commits: 'New commits' }[pr.followUp?.why];
   const verdict = pr.claude === 'reviewed' ? VERDICTS[pr.verdict] : null;
+  // Under Approved (reviewedColumn) the heading is my verdict, so there the word is only the TL;DR's toggle.
+  const underApproved = !live && pr.claude === 'reviewed' && pr.verdict === 'approved';
   const state = row.querySelector('.state');
-  state.textContent = live ?? verdict?.[0] ?? REVIEW_LABELS[pr.review];
+  state.textContent = live ?? (underApproved ? (pr.tldr ? 'TL;DR' : '') : verdict?.[0] ?? REVIEW_LABELS[pr.review]);
   if (live) state.dataset.live = '';
-  else if (verdict) state.dataset.state = verdict[1];
+  else if (verdict && !underApproved) state.dataset.state = verdict[1];
   const how = [pr.claude === 'reviewed' && pr.depth === 'quick' && 'quick review', pr.auto && 'auto'].filter(Boolean);
   if (how.length) state.title = [state.textContent, ...how].join(' · ');
   // A TL;DR (the top of the reviewer's handoff, which claude-review copies into state.json) turns the status word into its toggle:
@@ -477,18 +478,23 @@ function prRow(pr) {
     });
   };
   row.dataset.claude = pr.claude ?? '';
+  // The status icon shows only when it says what its section does not: a run going (a click opens cmux), a failed one (a click
+  // retries) or a PR back since my review. Otherwise the section header says it, and the title takes the icon's room.
+  if (pr.claude !== 'running' && pr.claude !== 'failed' && !pr.followUp) row.dataset.plain = '';
   // Back in the Inbox after my review: its dot says to review again.
   if (pr.followUp) row.dataset.follow = '';
   const claude = row.querySelector('.claude');
   // The status icon at the card's left (statusMark): running it opens cmux, failed it skims again, like s; any other click is the card's.
-  // Badges on the icon's corners: a gold star for a VIP author (top), a red dot for failing checks (bottom; my own PRs' icon and
-  // reason line already say so).
+  // A VIP author wears a gold star by their name; failing checks are red words at the front of the meta line, so a narrow
+  // card cuts the author's name rather than them (my own PRs' reason line already says so).
   const vip = isVip(pr, settings.vip);
   const red = (!pr.mine && CHECKS[pr.checks]) || '';
+  if (vip && !pr.mine) [...info.children].find((span) => span.textContent === pr.author)?.prepend(icon('i-star', 'star'));
+  if (red) info.prepend(el('span', { className: 'checks-red', textContent: red.toLowerCase() }));
   const [iconId, mark] = statusMark(pr);
   const used = pr.tokens && `${compact.format(pr.tokens)} tokens`;
   const marks = [mark, vip && 'VIP author', red, used].filter(Boolean);
-  claude.replaceChildren(icon(iconId), ...(vip ? [icon('i-star', 'vip')] : []), ...(red ? [el('span', { className: 'red' })] : []));
+  claude.replaceChildren(icon(iconId));
   claude.dataset.state = pr.claude ?? '';
   claude.title = marks.join(' · ');
   claude.ariaLabel = marks.join(', ');
@@ -514,8 +520,6 @@ function prRow(pr) {
     const { group, reason, action } = pr.next;
     // The status colour follows the group: red needs me, blue waiting, green ready, grey draft.
     row.dataset.group = group;
-    // Its status icon only while a self-check runs or failed (a click acts then): the section header says the rest.
-    if (pr.claude !== 'running' && pr.claude !== 'failed') row.dataset.plain = '';
     // After a self-check, Copy fix list copies its fix list's path, to hand to Claude (Fix reads it by itself); with Fixed it sits on a
     // line of its own under the meta line, so the facts keep the width.
     row.querySelector('.state').textContent = '';

@@ -475,6 +475,8 @@
   #tabs .n[data-live] { color: var(--amber); }
   /* An Inbox PR waiting on me more than a day: its wait, amber, opens the meta line. */
   .info .overdue { color: var(--amber); font-weight: 600; }
+  .info .star { width: 10px; height: 10px; margin-right: 3px; vertical-align: -1px; color: var(--gold); }
+  .info .checks-red { color: var(--red); font-weight: 600; }
   /* Inbox tab: a red dot beside the count while a PR I reviewed is back with new commits or a new request (a follow-up card). */
   body:has(.column[data-tab='Inbox'] > .pr[data-follow]) #tabs button[value='Inbox'][data-group='inbox']::after {
     content: ''; flex: none; align-self: flex-start; width: 6px; height: 6px; margin: 5px 0 0 -2px; border-radius: 50%; background: var(--dot-red);
@@ -653,7 +655,7 @@
   .title, .meta { grid-column: 2; margin: 0 10px 0 10px; }
   /* Up to two lines of title, then an ellipsis. */
   .title { grid-row: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; }
-  /* My own PR without a live status icon (panel.js data-plain): the section header names its state, so the title takes the icon's room. */
+  /* A card without a live status icon (panel.js data-plain): the section header names its state, so the title takes the icon's room. */
   .pr[data-plain] { grid-template-columns: 0 minmax(0, 1fr) auto auto; }
   .pr[data-plain] .claude { display: none; }
   .pr[data-plain] :is(.title, .meta, .chips) { margin-left: 0; }
