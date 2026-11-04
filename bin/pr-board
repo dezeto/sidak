@@ -237,9 +237,15 @@ def is_vip(pr): return (pr["author"] or {}).get("login", "").lower() in vip
 def stale(pr): return days > 0 and not is_vip(pr) and now - datetime.datetime.fromisoformat(pr["updatedAt"].replace("Z", "+00:00")).timestamp() > days * 86400
 snooze = settings.get("snooze", {})
 def key(pr): return f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}'
+# autofix.json: what Auto already did per PR (fixes, reruns, restacks, updates, retries, nudges), so none repeats.
+fix_path = os.path.join(os.path.dirname(state_path), "autofix.json")
+fixed = json.load(open(fix_path)) if os.path.exists(fix_path) else {}
+# A failed run starts again: a manual one on the next tick (I asked for it), an Auto one once per PR after an hour (a cmux hiccup, a
+# rate limit), kept in autofix.json "<key> retry". Failing again, it is left to me.
 def done(pr):
     entry = state.get(key(pr))
-    return entry is not None and not (entry.get("state") == "failed" and not entry.get("auto"))
+    if entry is None or entry.get("state") != "failed": return entry is not None
+    return bool(entry.get("auto")) and (key(pr) + " retry" in fixed or now * 1000 - entry.get("at", 0) < 3600 * 1000)
 # claude-review without a checkout exits before marking, so such a PR would reopen every tick.
 def checked_out(repo): return os.path.isdir(os.path.join(os.path.expanduser(config["repos"]), repo, ".git"))
 # Snoozed in the panel (h): not today.
@@ -259,6 +265,8 @@ OWN = """query { search(query: "is:open is:pr author:@me archived:false sort:cre
     __typename ... on CheckRun { name databaseId status conclusion detailsUrl } ... on StatusContext { state } } } } } } }
   reviewThreads(first: 100) { nodes { isResolved comments(last: 1) { nodes { createdAt author { login } } } } }
   latestReviews(first: 20) { nodes { state submittedAt } }
+  reviewRequests { totalCount }
+  requested: timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 1) { nodes { ... on ReviewRequestedEvent { createdAt } } }
   baseChanges: timelineItems(itemTypes: [BASE_REF_CHANGED_EVENT], last: 1) { nodes { ... on BaseRefChangedEvent { previousRefName currentRefName createdAt } } }
   timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) { nodes { ... on ReadyForReviewEvent { createdAt } } } } } } }"""
 iso = lambda text: datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
@@ -306,8 +314,6 @@ mine = [pr for pr in own_prs if pr.get("reviewDecision") != "APPROVED" and eligi
 # else's, or a request for changes after my last push, quiet for an hour (the reviewer is done for now). Once per head commit, kept in
 # autofix.json: a fix that pushes nothing is not run again, and one that pushes gets one more look at the new head.
 # ponytail: at most 3 auto-fixes per PR ever, so a fix that keeps failing CI stops; delete its autofix.json key to allow more.
-fix_path = os.path.join(os.path.dirname(state_path), "autofix.json")
-fixed = json.load(open(fix_path)) if os.path.exists(fix_path) else {}
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"] if pr["commits"]["nodes"] else {}
 def asks(pr):
     me, pushed = pr["author"]["login"], iso(last_commit(pr).get("committedDate") or "1970-01-01T00:00:00Z")
@@ -412,12 +418,39 @@ if reruns: print(f'reran flaky CI on {", ".join(reruns)}', file=sys.stderr)
 if reruns or touched:
     if not os.environ.get("DRY"): open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
 mine = [pr for pr in mine if all(pr is not other for other, _ in fixes)]  # its fix comes first; the self-check follows the fix's push
+# Auto-nudge: my ready PR with nothing left on my side (checks green or none, no conflict, no open thread, no change request, no
+# self-check due) whose pending reviewers have had a day since the last request, push or ready: the opener's ccnudge asks them again,
+# which pings them. Weekdays 9:00-18:00 only, at most twice per PR (autofix.json "<key> nudge"); after that it is mine to chase.
+def nudge_due(pr):
+    entry, rollup = state.get(key(pr), {}), last_commit(pr).get("statusCheckRollup") or {}
+    last = max([iso(e["createdAt"]) for e in pr["requested"]["nodes"]] + [iso(last_commit(pr).get("committedDate") or pr["createdAt"]), ready_at(pr)])
+    return (pr["reviewRequests"]["totalCount"] > 0 and pr.get("reviewDecision") not in ("APPROVED", "CHANGES_REQUESTED")
+            and pr.get("mergeable") != "CONFLICTING" and rollup.get("state") in (None, "SUCCESS")
+            and all(t["isResolved"] for t in pr["reviewThreads"]["nodes"]) and entry.get("state") != "running"
+            and not (entry.get("report") and entry.get("sha") != pr["headRefOid"])
+            and now - last >= 86400 and len(fixed.get(key(pr) + " nudge", [])) < 2)
+nudged = []
+if clock.weekday() < 5 and 9 <= clock.hour < 18:
+    for pr in own_prs:
+        if not eligible(pr) or pr in mine or any(pr is other for other, _ in fixes) or not nudge_due(pr): continue
+        if os.environ.get("DRY"): print(f"would nudge {key(pr)}", file=sys.stderr); continue
+        out = subprocess.run([os.path.join(os.path.dirname(state_path), "bin", "claude-review-open"), f'ccnudge://{pr["repository"]["nameWithOwner"]}/{pr["number"]}'],
+                             capture_output=True, text=True)
+        fixed.setdefault(key(pr) + " nudge", []).append(int(now))
+        if out.returncode == 0:
+            nudged.append(f'{pr["repository"]["name"]}#{pr["number"]}')
+            note(pr, "nudge", out.stdout.strip().capitalize() or "Nudged its reviewers")
 todo = mine + todo
 # Follow-ups (updated) after an hour without a push or a new request: the author is done for now.
 # A re-request is the author saying it is ready: a Skim on the next tick. Pushes alone wait for an hour's quiet.
 todo += [pr for pr in json.loads(os.environ["UPDATED"]) if eligible(pr) and (pr["asked"] or now * 1000 - pr["movedAt"] >= 3600 * 1000)]
 todo.sort(key=lambda pr: (pr not in mine, not is_vip(pr)))  # stable: mine, then VIPs, then the rest; oldest first within each
-if not todo and not fixes: save_log(); sys.exit(print(f'auto on ({"reran CI on " + ", ".join(reruns) if reruns else "nothing to review"})'))
+def save_fixed():
+    if not os.environ.get("DRY"): open(fix_path + ".tmp", "w").write(json.dumps(fixed)); os.replace(fix_path + ".tmp", fix_path)
+if nudged: save_fixed()
+if not todo and not fixes:
+    save_log(); did = [*(["reran CI on " + ", ".join(reruns)] if reruns else []), *(["nudged " + ", ".join(nudged)] if nudged else [])]
+    sys.exit(print(f'auto on ({"; ".join(did) or "nothing to review"})'))
 # Smart depth: Deep (tests and mutations) where a missed bug costs most, a Skim for the rest. A PR is risky when a changed file matches
 # one of these, or when it changes more than 500 lines.
 import re
@@ -445,8 +478,10 @@ if picked and not os.environ.get("DRY"):
 for pr in todo[:None if left is None else left - len(picked)]:
     repo, n = pr["repository"]["name"], pr["number"]
     depth, why = ("quick", "") if pr.get("asked") else depth_of(pr)
+    if state.get(key(pr), {}).get("state") == "failed" and state[key(pr)].get("auto"): fixed[key(pr) + " retry"] = [state[key(pr)].get("at")]
     print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/{depth}\t{repo}#{n}{" Deep (" + why + ")" if why else ""}')
     note(pr, "review", ("Deep" if depth == "full" else "Skim") + (" self-check" if pr in mine else " re-review" if pr.get("asked") else " review") + (f" ({why})" if why else ""))
+save_fixed()
 save_log()
 PY
 )

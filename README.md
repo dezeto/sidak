@@ -69,8 +69,12 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   that word opens the review's TL;DR (what the PR does, what it found, what next).
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
+- **Auto nudge**: with Auto on, your ready PR whose pending reviewers have had a day since the last request or push, with nothing
+  left on your side (checks green, no conflict, no open thread or change request), gets its reviewers asked again. Weekdays
+  9:00-18:00, at most twice per PR. Auto never merges.
+- **Board reloads itself** when its code changes on disk, on the Mac and the phone, once no sheet, menu or search is open.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it
-  has been quiet for an hour (re-requested: a Skim on the next sync); no daily limit unless Auto per day sets one.
+  has been quiet for an hour (re-requested: a Skim on the next sync); a failed Auto run is retried once an hour later; no daily limit unless Auto per day sets one.
 - **Stale** PRs folded away, **VIP** authors pinned, **snooze** a card for a day, right-click for Open in Zed, Copy
   branch, Files changed, Checks, Copy link.
 - Reviews stay silent for everyone else: no labels, no comments beyond the review itself.

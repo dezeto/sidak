@@ -1403,3 +1403,18 @@ for (const event of ['onCreated', 'onRemoved', 'onChanged', 'onMoved']) chrome.b
 
 // Dev hook: opening panel.html#reload reloads the unpacked extension (manifest changes need it).
 if (location.hash === '#reload') chrome.runtime.reload();
+
+// The board reloads itself when its own code changes on disk (an edit, a pull), so neither Sidak.app nor the phone needs a restart.
+// Checked each minute while the board shows; it waits while I am in the middle of something: a sheet or menu open, a search, a field.
+// The page itself by its own URL: the phone serves it at /, Sidak.app and Arc at panel.html. A fetch that fails counts as unchanged.
+// ponytail: refetches about 200 KB a minute; compare Last-Modified instead if the phone's data use matters.
+const CODE = [location.href.split('#')[0], ...['panel.js', 'pr.js', 'lg.css', 'app/remote.js'].map((p) => chrome.runtime.getURL(p))];
+const codeNow = () => Promise.all(CODE.map((url) => fetch(url, { cache: 'no-store' }).then((res) => (res.ok ? res.text() : undefined)).catch(() => undefined)));
+const codeLoaded = codeNow();
+setInterval(async () => {
+  if (document.hidden) return;
+  const [was, now] = await Promise.all([codeLoaded, codeNow()]);
+  if (now.every((text, i) => text === undefined || text === was[i])) return;
+  const busy = sheet.open || menu.matches(':popover-open') || search.value || document.activeElement?.matches('input, textarea, select');
+  if (!busy) location.reload();
+}, 60000);
