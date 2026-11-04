@@ -70,7 +70,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
 - **Menu-bar gauge** that fills as the backlog gets reviewed, a finish notification with the verdict, a global shortcut
   (⌃⌥P), and a popover you can drag off into its own window.
 - **Auto review**: opt-in, quick depth, every Inbox PR at once, VIP authors first, and a re-review of each PR that came back once it
-  has been quiet for an hour; no daily limit unless Auto per day sets one.
+  has been quiet for an hour (re-requested: a Skim on the next sync); no daily limit unless Auto per day sets one.
 - **Stale** PRs folded away, **VIP** authors pinned, **snooze** a card for a day, right-click for Open in Zed, Copy
   branch, Files changed, Checks, Copy link.
 - Reviews stay silent for everyone else: no labels, no comments beyond the review itself.
@@ -107,7 +107,7 @@ Each card's state is the icon on its left; hover it for the full text (who is aw
 | <img src="docs/icons/eye-amber.svg" width="16" alt=""> | Waiting for your review |
 | <img src="docs/icons/play-blue.svg" width="16" alt=""> | Review running (`Auto review` in amber when Auto started it); a click opens its cmux tab |
 | <img src="docs/icons/xcircle-red.svg" width="16" alt=""> | Review failed: the tab closed before a review posted; a click skims again |
-| <img src="docs/icons/refresh-amber.svg" width="16" alt=""> | Back since your review: new commits, or you were re-requested; Auto re-reviews it after an hour of quiet |
+| <img src="docs/icons/refresh-amber.svg" width="16" alt=""> | Back since your review: new commits, or you were re-requested; Auto re-reviews it after an hour of quiet, or with a Skim right away when re-requested |
 | <img src="docs/icons/done-green.svg" width="16" alt=""> | Reviewed; the word under the title is your verdict (Approved, Changes, Commented) and opens the TL;DR |
 
 **Your own PRs** (To do, Waiting, Ready)
