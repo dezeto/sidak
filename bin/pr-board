@@ -311,7 +311,7 @@ for e in log:
 mine = [pr for pr in own_prs if pr.get("reviewDecision") != "APPROVED" and eligible(pr) and (recheck(pr) or (ready_at(pr) >= since and not done(pr)))]
 # Auto-fix: claude-fix (fixes, pushes, replies on the threads, re-requests review) on my own ready PR, in a background cmux tab, when
 # its checks fail, it conflicts with its base, or a change request waits on me: an unresolved thread whose last comment is someone
-# else's, or a request for changes after my last push, quiet for an hour (the reviewer is done for now). Once per head commit, kept in
+# else's, or a request for changes after my last push, quiet for 15 minutes (the reviewer is done for now). Once per head commit, kept in
 # autofix.json: a fix that pushes nothing is not run again, and one that pushes gets one more look at the new head.
 # ponytail: at most 3 auto-fixes per PR ever, so a fix that keeps failing CI stops; delete its autofix.json key to allow more.
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"] if pr["commits"]["nodes"] else {}
@@ -320,7 +320,7 @@ def asks(pr):
     lasts = [thread["comments"]["nodes"][-1] for thread in pr["reviewThreads"]["nodes"] if not thread["isResolved"] and thread["comments"]["nodes"]]
     marks = [iso(c["createdAt"]) for c in lasts if (c["author"] or {}).get("login") != me]
     marks += [iso(r["submittedAt"]) for r in pr["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"] and iso(r["submittedAt"]) > pushed]
-    return bool(marks) and now - max(marks) >= 3600
+    return bool(marks) and now - max(marks) >= 900
 # Failing checks, once every check is done: "flaky" (with the Actions run ids to rerun) when each failed job is an infrastructure fault
 # (a lost or killed runner, a timeout, a full disk, a job that never started), else "failing"; None while green or still running.
 # ponytail: the first 100 checks only, and a regex over the failed jobs' annotations and last log lines; widen INFRA as new faults show.

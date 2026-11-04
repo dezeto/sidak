@@ -43,7 +43,7 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   fix list) ahead of anyone else's review; approved ones are skipped. Push to it and, 10 quiet minutes later, Auto checks it
   again; Nudge waits for that fix list, so reviewers get a head your own check has read.
 - **Auto fixes your own PRs**: with Auto on, a ready PR of yours whose checks fail, that conflicts with its base, or that has a change
-  request waiting on you (quiet for an hour) gets `claude-fix` in a background cmux tab: it fixes, pushes, replies on the threads
+  request waiting on you (quiet for 15 minutes) gets `claude-fix` in a background cmux tab: it fixes, pushes, replies on the threads
   and re-requests review. Once per head commit, at most three times per PR (`autofix.json`).
   A failure that is the CI's own fault (a lost runner, a timeout, a full disk) gets its failed jobs rerun first, once per head
   commit, at no token cost; claude-fix sees it only if it fails again.
