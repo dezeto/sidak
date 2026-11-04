@@ -56,8 +56,6 @@ function authorState(pr, now = Date.now()) {
   const by = (state) => pr.reviewers.filter((r) => r.state === state).map((r) => r.login);
   const names = (logins) => logins.slice(0, 2).join(', ') + (logins.length > 2 ? ` +${logins.length - 2}` : '');
   const threads = `${pr.unresolved} thread${pr.unresolved === 1 ? '' : 's'}`;
-  const days = Math.floor((now - Date.parse(pr.updatedAt)) / 86400000);
-  const updated = `updated ${days >= 1 ? `${days} d ago` : 'today'}`;
   const approved = by('APPROVED').length ? `approved by ${names(by('APPROVED'))}` : 'approved';
   // [rank, pill, reason, icon] per blocker, most severe first. The panel shows the icon at the card's left, the pill as its label.
   const blockers = [
@@ -67,7 +65,8 @@ function authorState(pr, now = Date.now()) {
     pr.unresolved > 0 && [3, threads, `${threads} open`, 'i-comment'],
   ].filter(Boolean);
   const reason = blockers.map(([, , text]) => text).join(' · ');
-  if (pr.review === 'DRAFT') return { group: 'draft', rank: 6, pill: 'draft', reason: reason || updated, action: 'ready', icon: 'i-pr' };
+  // The reason says only what the tab and its section do not: no "no reviews yet" under No reviewers; the card's age is on its right.
+  if (pr.review === 'DRAFT') return { group: 'draft', rank: 6, pill: 'draft', reason, action: 'ready', icon: 'i-pr' };
   if (blockers.length) {
     const [[rank, pill, , icon]] = blockers;
     return { group: 'needs', rank, pill: blockers.length > 1 ? `${pill} +${blockers.length - 1}` : pill, reason, action: 'fix', icon };
@@ -80,7 +79,7 @@ function authorState(pr, now = Date.now()) {
     group: 'waiting',
     rank: 4,
     pill: pending.length ? `awaiting ${names(pending)}` : 'no reviewers',
-    reason: by('APPROVED').length ? approved : `no reviews yet, ${updated}`,
+    reason: [by('APPROVED').length && approved, pending.length && `waiting on ${names(pending)}`].filter(Boolean).join(' · '),
     action: pending.length ? 'nudge' : null,
     icon: pending.length ? 'i-hourglass' : 'i-person-add',
   };

@@ -514,9 +514,12 @@ function prRow(pr) {
     const { group, reason, action } = pr.next;
     // The status colour follows the group: red needs me, blue waiting, green ready, grey draft.
     row.dataset.group = group;
-    // After a self-check the status word copies its fix list's path, to hand to Claude (Fix reads it by itself).
-    const state = row.querySelector('.state');
-    state.textContent = '';
+    // Its status icon only while a self-check runs or failed (a click acts then): the section header says the rest.
+    if (pr.claude !== 'running' && pr.claude !== 'failed') row.dataset.plain = '';
+    // After a self-check, Copy fix list copies its fix list's path, to hand to Claude (Fix reads it by itself); with Fixed it sits on a
+    // line of its own under the meta line, so the facts keep the width.
+    row.querySelector('.state').textContent = '';
+    const chips = el('span', { className: 'chips' });
     if (pr.report) {
       const copy = el('button', { type: 'button', className: 'state', textContent: 'Copy fix list', title: pr.report });
       copy.dataset.live = '';
@@ -527,7 +530,7 @@ function prRow(pr) {
         copy.textContent = 'Copied';
         setTimeout(() => (copy.textContent = 'Copy fix list'), 1500);
       };
-      state.replaceWith(copy);
+      chips.append(copy);
     }
     info.replaceChildren(...words(`${pr.repo} #${pr.number}`, ...reason.split(' · ')));
     const [label, tip, key] = AUTHOR_ACTIONS[action] ?? [];
@@ -547,11 +550,10 @@ function prRow(pr) {
       const lines = new Map([...pr.fix.matchAll(/^[-*]?[ \t]*(Done|Left|Failing):[ \t]*(.+)$/gm)]
         .filter(([, , text]) => !/^(nothing|none)\b/i.test(text)).map(([, label, text]) => [label, text]));
       const word = el('span', { className: 'state', textContent: 'Fixed', title: 'What claude-fix did on this PR' });
-      const at = row.querySelector('.state');
-      if (at.textContent) at.after(word);
-      else at.replaceWith(word);
+      chips.append(word);
       if (lines.size) tldrToggle(row, word, lines, `${repoOf(pr)}#${pr.number} fix`);
     }
+    if (chips.childElementCount) row.append(chips);
   }
   // Claude reviewed it and left only comments, nothing blocking: Approve is the next step, mine to take (Claude approves by itself
   // when it has nothing to say). Not once the PR moved since (a follow-up): that wants a look first.

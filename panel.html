@@ -109,6 +109,7 @@
   :root[data-remote] .pr { margin: 0 16px; padding: 12px 14px; background-color: var(--group); }
   :root[data-remote] .pr:not([data-first]) { background-image: linear-gradient(var(--group-line), var(--group-line)); background-repeat: no-repeat; background-position: 44px 0; background-size: calc(100% - 44px) 0.5px; }
   /* data-first / data-last: the first and last shown row of each run (app/remote.js), so a search that hides rows keeps the corners. */
+  :root[data-remote] .pr[data-plain]:not([data-first]) { background-position: 14px 0; background-size: calc(100% - 14px) 0.5px; }
   :root[data-remote] .pr[data-first] { border-top-left-radius: 22px; border-top-right-radius: 22px; }
   :root[data-remote] .pr[data-last] { border-bottom-left-radius: 22px; border-bottom-right-radius: 22px; }
   :root[data-remote] details.stale > summary { margin: 22px 16px 0; padding: 0 16px; min-height: 50px; border-radius: 22px; background: var(--group); font-size: 15px; font-weight: 600; color: var(--lg-ink); }
@@ -271,10 +272,8 @@
     text-align: center; transform: translate(-50%, -12px);
   }
   :root[data-remote] #toast[data-on] { transform: translate(-50%, 0); }
-  :root[data-remote] .tldr { grid-row: 4; }
   /* Phone cards are compact rows like Mail's: the title on up to two lines, no buttons; a tap opens the card's sheet. */
   :root[data-remote] .pr .actions, :root[data-remote] .more-menu { display: none; }
-  :root[data-remote] .title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; white-space: normal; }
   :root[data-remote] .pr { padding-block: 10px; }
   /* The card's sheet (panel.js openSheet), an iOS action sheet in thumb reach: what the PR is and waits on, its TL;DR, Open PR,
      its buttons at full size, then the menu's. A swipe down or a tap outside closes it. */
@@ -652,7 +651,15 @@
   .pr[data-follow] { --status: var(--dot-amber); }
   .pr[data-group='draft'] { --status: var(--grey); }
   .title, .meta { grid-column: 2; margin: 0 10px 0 10px; }
-  .title { grid-row: 1; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Up to two lines of title, then an ellipsis. */
+  .title { grid-row: 1; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 13px; font-weight: 600; line-height: 17px; letter-spacing: -0.1px; }
+  /* My own PR without a live status icon (panel.js data-plain): the section header names its state, so the title takes the icon's room. */
+  .pr[data-plain] { grid-template-columns: 0 minmax(0, 1fr) auto auto; }
+  .pr[data-plain] .claude { display: none; }
+  .pr[data-plain] :is(.title, .meta, .chips) { margin-left: 0; }
+  /* Copy fix list and Fixed, on my own PR: a line under the meta line. */
+  .chips { grid-column: 2; grid-row: 3; display: flex; gap: 14px; margin: 1px 10px 0; font-size: 11.5px; line-height: 15px; }
+  .chips > :is(.state, button.state) { margin: 0; }
   .pr[data-state='DRAFT'] { opacity: 0.7; }
   /* Skim / Deep take the age's spot on hover or j/k focus. */
   .actions { display: none; gap: 6px; grid-column: 3 / span 2; grid-row: 1 / span 2; }
@@ -678,7 +685,7 @@
     rotate: 45deg; transition: rotate var(--lg-duration-fast), translate var(--lg-duration-fast);
   }
   button.state[aria-expanded='true']::after { rotate: 225deg; translate: 0 2px; }
-  .tldr { grid-column: 2 / -1; grid-row: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
+  .tldr { grid-column: 2 / -1; grid-row: 4; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 3px 8px; margin: 6px 0 2px 12px; font-size: 11.5px; line-height: 16px; color: var(--lg-ink); }
   .tldr[hidden] { display: none; }
   .tldr b { font-weight: 600; color: var(--lg-ink-muted); }
   /* Reviewers before the age: overlapping faces, each ringed by its state (green approved, red changes, faded pending). */
