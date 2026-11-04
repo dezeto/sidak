@@ -815,20 +815,6 @@ function mineColumns(all, stale) {
     if (drafts.length) section.insertBefore(staleFold(drafts, 'Drafts', 'stale drafts'), section.querySelector(':scope > details.stale'));
     return section;
   });
-  // Reviewer load, over Waiting: whom my open PRs (any tab, stale ones aside) still wait on, most first, so I know whom to nudge.
-  const load = new Map();
-  for (const pr of all) if (!stale(pr)) for (const r of pr.reviewers) if (r.state === 'PENDING') load.set(r.login, [...(load.get(r.login) ?? []), r]);
-  if (load.size) {
-    const line = el('p', { className: 'load' });
-    line.append(el('span', { className: 'load-label', textContent: 'Waiting on' }));
-    for (const [login, rs] of [...load].toSorted((a, b) => b[1].length - a[1].length)) {
-      const who = el('span', { className: 'load-who', title: `${login}: ${rs.length} of my PRs wait on them` });
-      who.append(el('img', { src: rs[0].avatarUrl, alt: '', width: 16, height: 16 }), el('span', { textContent: `${login} ${rs.length}` }));
-      line.append(who);
-    }
-    const waiting = sections[MINE_TABS.findIndex(([group]) => group === 'waiting')];
-    waiting.prepend(line);
-  }
   for (const chain of stacks) {
     const section = sections[MINE_TABS.findIndex(([group]) => group === ({ draft: 'needs' }[chain[0].next.group] ?? chain[0].next.group))];
     // On top of the tab, its own heading over it; a tab that held nothing else loses its empty heading.

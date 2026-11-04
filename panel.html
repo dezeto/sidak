@@ -256,13 +256,6 @@
   .sheet-history li::before { content: ''; position: absolute; left: -21px; top: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--lg-ink-muted); }
   .sheet-history li.now { color: var(--amber); font-weight: 600; }
   .sheet-history li.now::before { background: var(--amber); }
-  /* Reviewer load over Mine's Waiting: who my PRs wait on, most first. */
-  .load { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 2px 20px 8px; font-size: 12px; color: var(--lg-ink-muted); }
-  .load-label { font-weight: 600; }
-  .load-who { display: inline-flex; align-items: center; gap: 5px; color: var(--lg-ink); }
-  .load-who img { width: 16px; height: 16px; border-radius: 50%; }
-  :root[data-remote] .load { margin: 16px 20px 0; font-size: 14px; }
-  :root[data-remote] .load-who img { width: 20px; height: 20px; }
   .badge-on { margin-left: auto; white-space: nowrap; padding: 6px 2px; border: 0; background: none; color: var(--lg-accent); font: inherit; font-size: 16px; }
   .badge-on:disabled { color: var(--lg-ink-muted); }
   /* Phone toast: a solid iOS banner at the top, under the status bar, never over the list's text. */

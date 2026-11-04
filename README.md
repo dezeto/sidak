@@ -27,7 +27,6 @@ work and steer it. The review lands on GitHub as an ordinary pull-request review
   PR in a background cmux tab, and the short answer shows on the card's sheet. Nothing is posted.
 - **Review history** in the card's sheet: each of Claude's runs on the PR (when, Skim or Deep, what it posted, the head it read),
   and whether new commits came since.
-- **Reviewer load** over your Waiting tab: whom your open PRs wait on, most first, so you know whom to nudge.
 - **This week** (the calendar button by the sync time): the week's reviews, what they caught, your self-checks, tokens and
   Auto's share, the Inbox PRs waiting on you longest, and what Auto did: each review and fix it started, what a fix pushed,
   and each CI rerun.
