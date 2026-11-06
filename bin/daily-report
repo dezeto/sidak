@@ -1,7 +1,7 @@
 #!/bin/zsh
 # The day's review report: what happened on every PR Sidak reviewed or self-checked that day, and on my own PRs Auto worked on (who
 # pushed, replied, reviewed, resolved, merged), gathered from GitHub into reports/<day>.json, then written up by Claude as one private
-# Artifact, published to the same link each day (report-url; earlier days stay in its version history).
+# Artifact, a new one each run (report-url holds the newest link; Sidak's This week sheet opens it).
 #   daily-report [<YYYY-MM-DD>]      pr-board report starts it in a background cmux tab, weekdays from settings.json reportHour (18)
 #   PROFILE=cwc ... / MODEL=opus ...
 # Interactive Claude in its own tab: a headless claude -p has no Artifact tool (neither profile's had). PROFILE defaults to cc, the
@@ -33,6 +33,7 @@ def iso(text): return datetime.datetime.fromisoformat(text.replace("Z", "+00:00"
 def on_day(text): return bool(text) and start <= iso(text) < end
 def hm(text): return datetime.datetime.fromtimestamp(iso(text)).strftime("%H:%M")
 def hm_ms(ms): return datetime.datetime.fromtimestamp(ms / 1000).strftime("%H:%M")
+def short(path): return "/".join(path.split("/")[-2:])  # a file's folder and name: enough to say which file
 def cut(text, n): text = re.sub(r"\s+", " ", text or "").strip(); return text if len(text) <= n else text[:n] + "…"
 # The day's PRs: a review run of Sidak's that day (claude-review's history), or something Auto did on it (autolog.json).
 runs = {}
@@ -86,35 +87,47 @@ for key in keys:
     entry = state.get(key, {})
     report = entry.get("report") or ""
     about, diagram = overview(key.split("/")[1].split("#")[0], pr["number"], entry)
-    fixes = [cut(re.sub(r"\*\*", "", line), 220) for line in open(report).read().splitlines() if re.match(r"^\d+\. \*\*", line)][:15] if report and os.path.exists(report) else []
+    fixes = [cut(re.sub(r"\*\*", "", line), 160) for line in open(report).read().splitlines() if re.match(r"^\d+\. \*\*", line)][:10] if report and os.path.exists(report) else []
     head = pr["commits"]["nodes"][-1]["commit"] if pr["commits"]["nodes"] else {}
     happened = []
     for node in pr["commits"]["nodes"]:
         c = node["commit"]
         if on_day(c["committedDate"]):
-            happened.append({"at": hm(c["committedDate"]), "who": (c["author"].get("user") or {}).get("login") or c["author"].get("name"), "did": "pushed commit", "what": f'{c["abbreviatedOid"]} {cut(c["messageHeadline"], 160)}'})
+            happened.append({"at": hm(c["committedDate"]), "who": (c["author"].get("user") or {}).get("login") or c["author"].get("name"), "did": "pushed commit", "what": cut(c["messageHeadline"], 90)})
     for r in pr["reviews"]["nodes"]:
         if on_day(r["submittedAt"]):
-            happened.append({"at": hm(r["submittedAt"]), "who": who(r["author"]), "did": {"APPROVED": "approved", "CHANGES_REQUESTED": "requested changes", "COMMENTED": "reviewed with comments", "DISMISSED": "review dismissed"}.get(r["state"], r["state"].lower()), "what": cut(r["body"], 700)})
+            happened.append({"at": hm(r["submittedAt"]), "who": who(r["author"]), "did": {"APPROVED": "approved", "CHANGES_REQUESTED": "requested changes", "COMMENTED": "reviewed with comments", "DISMISSED": "review dismissed"}.get(r["state"], r["state"].lower()), "what": cut(r["body"], 400)})
     open_threads = []
     for t in pr["reviewThreads"]["nodes"]:
         comments = t["comments"]["nodes"]
         for c in comments:
             if on_day(c["createdAt"]):
-                happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on a thread" if c is not comments[0] else "opened a thread", "where": f'{t["path"]}{":" + str(t["line"]) if t.get("line") else ""}', "what": cut(c["body"], 500), "resolved": t["isResolved"]})
+                happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on a thread" if c is not comments[0] else "opened a thread", "where": f'{short(t["path"])}{":" + str(t["line"]) if t.get("line") else ""}', "what": cut(c["body"], 280)})
         if not t["isResolved"] and comments:
-            open_threads.append({"where": f'{t["path"]}{":" + str(t["line"]) if t.get("line") else ""}', "last_by": who(comments[-1]["author"]), "last": cut(comments[-1]["body"], 240), "opened_by": who(comments[0]["author"])})
+            open_threads.append({"where": f'{short(t["path"])}{":" + str(t["line"]) if t.get("line") else ""}', "last_by": who(comments[-1]["author"]), "last": cut(comments[-1]["body"], 160), "opened_by": who(comments[0]["author"])})
         elif t["isResolved"] and t.get("resolvedBy") and any(on_day(c["createdAt"]) for c in comments):
-            happened.append({"at": "", "who": who(t["resolvedBy"]), "did": "resolved a thread", "where": t["path"]})
+            happened.append({"at": "", "who": who(t["resolvedBy"]), "did": "resolved a thread", "where": short(t["path"])})
     for c in pr["comments"]["nodes"]:
         if on_day(c["createdAt"]):
-            happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on the PR", "what": cut(c["body"], 500)})
+            happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on the PR", "what": cut(c["body"], 280)})
     for ev in pr["timelineItems"]["nodes"]:
         if on_day(ev.get("createdAt")):
             what = ev["__typename"].removesuffix("Event")
             reviewer = ev.get("requestedReviewer") or {}
             happened.append({"at": hm(ev["createdAt"]), "who": who(ev.get("actor")), "did": re.sub(r"(?<!^)([A-Z])", r" \1", what).lower(), **({"what": reviewer.get("login") or reviewer.get("name")} if reviewer else {})})
     happened.sort(key=lambda h: h["at"] or "99")
+    # A run of commits by one person is one event: "pushed 13 commits: a; b; …".
+    merged = []
+    for h in happened:
+        prev = merged[-1] if merged else None
+        if prev and h["did"] == "pushed commit" and prev["did"] in ("pushed commit", "pushed commits") and prev["who"] == h["who"]:
+            if "subjects" not in prev: prev["subjects"] = [prev.pop("what")]
+            prev["did"] = "pushed commits"; prev["subjects"].append(h["what"]); continue
+        merged.append(h)
+    for h in merged:
+        if "subjects" in h:
+            n = len(h["subjects"]); h["what"] = f"{n} commits: " + "; ".join(h.pop("subjects")[:5]) + (f"; +{n - 5} more" if n > 5 else "")
+    happened = merged
     result.append({
         "pr": key, "title": pr["title"], "url": pr["url"], "author": who(pr["author"]), "mine": who(pr["author"]) == me,
         "status": "merged" if pr["merged"] else pr["state"].lower() + (" draft" if pr["isDraft"] else ""),
@@ -126,11 +139,11 @@ for key in keys:
         "auto_did": [{"at": hm_ms(e["at"]), "what": e["text"], **({"summary": e["summary"]} if e.get("summary") else {}), **({"outcome": e["done"]} if e.get("done") else {})} for e in acts.get(key, [])],
         "overview": about, "diagram": diagram,
         # No Overview from a review yet: what the PR says about itself, and what it touches.
-        **({} if about else {"pr_body": cut(re.sub(r"<!--.*?-->", "", pr["body"] or "", flags=re.S), 1200),
-                            "files": [f'{f["path"]} +{f["additions"]} -{f["deletions"]}' for f in pr["files"]["nodes"]][:25]}),
+        **({} if about else {"pr_body": cut(re.sub(r"<!--.*?-->", "", pr["body"] or "", flags=re.S), 600),
+                            "files": [f'{f["path"]} +{f["additions"]} -{f["deletions"]}' for f in pr["files"]["nodes"]][:12]}),
         "happened_today": happened, "open_threads": open_threads,
     })
-json.dump({"day": day, "me": me, "prs": result}, open(out, "w"), indent=1)
+json.dump({"day": day, "me": me, "prs": result}, open(out, "w"), separators=(",", ":"))
 print(f"{len(result)} PRs, {sum(len(p['happened_today']) for p in result)} things people did")
 PY
 prompt=$(cat <<EOF
@@ -147,7 +160,7 @@ I read it on my phone between other things, so it must scan in seconds: short li
   5. Next: one highlighted line, the next step and whose it is.
 
 The page: load the artifact-design skill first and follow it. One HTML page titled "Sidak daily report", phone first, light and dark, with the PR numbers as a jump row near the top. Save it as $out/$day.html.
-Publish it with the Artifact tool. If $url_file exists, it holds the report's link: read that artifact first (action read), then publish your file to that url, so the link stays the same and earlier days stay in its versions. Otherwise publish a new one. Either way, write the link to $url_file at the very end, alone on one line: its time tells Sidak the report is out. Then stop; no summary in the terminal.
+Publish it with the Artifact tool as a new artifact (no url; do not read or update an earlier report). Then write its link to $url_file, replacing what is there, alone on one line, as the very last step: its time tells Sidak the report is out. Then stop; no summary in the terminal.
 EOF
 )
 cd $out
