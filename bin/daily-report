@@ -129,7 +129,7 @@ for key in keys:
             n = len(h["subjects"]); h["what"] = f"{n} commits: " + "; ".join(h.pop("subjects")[:5]) + (f"; +{n - 5} more" if n > 5 else "")
     happened = merged
     result.append({
-        "pr": key, "title": pr["title"], "url": pr["url"], "author": who(pr["author"]), "mine": who(pr["author"]) == me,
+        "pr": key.split("/", 1)[1], "title": pr["title"], "url": pr["url"], "author": who(pr["author"]), "mine": who(pr["author"]) == me,
         "status": "merged" if pr["merged"] else pr["state"].lower() + (" draft" if pr["isDraft"] else ""),
         "merged_by": who(pr["mergedBy"]) if pr["merged"] else None, "review_decision": pr["reviewDecision"],
         "checks": (head.get("statusCheckRollup") or {}).get("state"), "size": f'+{pr["additions"]} -{pr["deletions"]}', "base": pr["baseRefName"],
@@ -144,23 +144,47 @@ for key in keys:
         "happened_today": happened, "open_threads": open_threads,
     })
 json.dump({"day": day, "me": me, "prs": result}, open(out, "w"), separators=(",", ":"))
+# The page's facts (report/index.html draws them; Claude writes only the words): what GitHub and Sidak's state say, nothing written.
+runs_all = [r for p in result for r in p["our_runs"]]
+reviews = [r for r in runs_all if r["kind"] == "review"]
+facts = {"day": day, "me": me, "made": datetime.datetime.now().strftime("%H:%M"),
+         "counts": {"prs": len(result), "mine": sum(p["mine"] for p in result), "reviews": len(reviews),
+                    **{v: sum(r["verdict"] == v for r in reviews) for v in ("approved", "changes", "commented")},
+                    "self_checks": len(runs_all) - len(reviews), "fixes": sum(e.get("kind") == "fix" for k in keys for e in acts.get(k, [])),
+                    "merged": sum(p["status"] == "merged" for p in result), "closed": sum(p["status"] == "closed" for p in result)},
+         "prs": []}
+for p in result:
+    pr = prs["/".join([p["url"].split("/")[3], p["pr"]])]
+    facts["prs"].append({"key": p["pr"], "repo": p["pr"].split("#")[0], "n": pr["number"], "url": p["url"], "title": p["title"], "author": p["author"],
+                         "mine": p["mine"], "status": "merged" if pr["merged"] else pr["state"].lower(), "draft": pr["isDraft"],
+                         "decision": pr["reviewDecision"], "checks": p["checks"], "add": pr["additions"], "del": pr["deletions"], "base": p["base"],
+                         "merged_by": p["merged_by"], "merged_at": hm(pr["mergedAt"]) if pr["merged"] and pr.get("mergedAt") else None,
+                         "diagram": p["diagram"], "runs": [{k: r[k] for k in ("at", "depth", "kind", "verdict")} for r in p["our_runs"]]})
+page = os.path.splitext(out)[0]
+os.makedirs(page, exist_ok=True)
+json.dump(facts, open(os.path.join(page, "facts.json"), "w"), indent=1)
 print(f"{len(result)} PRs, {sum(len(p['happened_today']) for p in result)} things people did")
 PY
 prompt=$(cat <<EOF
-Write my daily review report for $day and publish it. The data is in $out/$day.json: every PR Sidak reviewed or self-checked that day and my own PRs Auto worked on. For each: overview and diagram (what the PR is, written by Sidak's reviewer while it had the whole PR in context; a Mermaid flowchart), or, when there is none yet, pr_body and files; what each person did on GitHub that day (happened_today, oldest first); the threads still open; Sidak's own runs (our_runs, our_tldr, self_check_fixes); Auto's actions (auto_did, with fix summaries). I am $(cfg .login), "you" in the report; Sidak and Auto post as me.
+Write the words for my daily review report for $day, then publish it. The page is designed already: $day/index.html draws everything from $day/facts.json and the $day/words.json you write. Do not load design skills, do not run a quickstart, and do not change index.html or facts.json.
 
-I read it on my phone between other things, so it must scan in seconds: short lines, not paragraphs. Use only the data; never guess; when nothing happened after our review, say so in a few words.
-- Writing: plain words, one fact per line, at most two lines of text in a row anywhere. No shas, no long quotes: quote only when the exact words matter, at most 15 words, muted. People by their GitHub login.
-- Top: the date, three short sentences of overview, count tiles (PRs, our reviews by verdict, self-checks, fixes, merged), then three lists of one-line rows, each the PR number and short title with one muted line of why (12 words at most): Needs me, Waiting on others (who, for what), Merged today (who merged, when).
-- Then one collapsible card per PR, others' PRs first, then mine. Closed, the card shows the number, a short title, the author, status chips (draft, open or merged; approved or changes requested; checks) and its Next line, so the closed list alone tells me what to do. Open, in this order:
-  1. What it is: the overview as two to four short sentences, then its diagram drawn. With no overview, write two sentences from pr_body and files, and draw a small top-to-bottom diagram only when they show the pieces clearly. Mermaid from https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.6.0/mermaid.min.js, rendered with a theme that follows light and dark, small, scrolling sideways inside its box rather than the page; a diagram that fails to render shows nothing, not an error.
-  2. Our review: the verdict chips, then at most three findings, one line each (on my own PRs, the self-check's Blocking and Should fix items).
-  3. Today: a timeline, one row per event as "time · who · what", at most 15 words each; join a person's events in a row ("pushed 3 commits: x, y, z"); Auto's fixes with their summary in one line.
-  4. Still open: one row per unresolved thread, "file: the question in a few words, who must answer".
-  5. Next: one highlighted line, the next step and whose it is.
+The day's data is in $day.json: every PR Sidak reviewed or self-checked that day and my own PRs Auto worked on. Per PR: overview (what the PR is, from Sidak's reviewer) or, when there is none, pr_body and files; what each person did on GitHub that day (happened_today, oldest first); the threads still open; Sidak's own runs (our_runs, our_tldr, self_check_fixes); Auto's actions (auto_did, with fix summaries). I am $(cfg .login), "you" in the words; Sidak and Auto post as me. Read it with a script rather than whole. Use only the data; never guess.
 
-The page: load the artifact-design skill first and follow it. One HTML page titled "Sidak daily report", phone first, light and dark, with the PR numbers as a jump row near the top. Save it as $out/$day.html.
-Publish it with the Artifact tool as a new artifact (no url; do not read or update an earlier report). Then write its link to $url_file, replacing what is there, alone on one line, as the very last step: its time tells Sidak the report is out. Then stop; no summary in the terminal.
+Write $day/words.json in exactly this shape; the keys of prs are each PR's "pr" value, and every PR in the data gets one:
+{"overview": ["three short sentences on the day"],
+ "needs_me": [{"pr": "crm#1", "why": "what I must do, 12 words at most"}],
+ "waiting": [{"pr": "crm#2", "why": "who, and for what, 12 words at most"}],
+ "prs": {"crm#1": {
+   "title": "the PR's subject in 6 words at most",
+   "next": {"who": "me, others or none", "text": "the one next step and whose it is, 15 words at most"},
+   "what": "what the PR changes and why, two to four short sentences, from its overview or else pr_body and files",
+   "diagram": "only when the PR's diagram is null and pr_body and files show the pieces clearly: a Mermaid flowchart TD, at most 8 nodes, short double-quoted labels, no semicolons",
+   "found": ["at most three findings of our review, one line each; on my own PRs, the Blocking and Should fix items"],
+   "today": [["18:08", "Jasonnn-cc", "pushed 13 commits: ticket panel translations, label refresh"]],
+   "open": [["displayValue.ts:44", "the question in a few words", "who must answer"]]}}}
+Plain words, one fact per line, no shas, quotes of 15 words at most. today: one row per event, oldest first, 15 words at most each; join one person's events in a row; Auto's fixes with their summary. A merged PR, or one that needs nothing more, has next.who "none".
+
+Then publish $day/index.html with the Artifact tool as a new artifact (no url; do not read or update an earlier report), with files {"facts.json": "$day/facts.json", "words.json": "$day/words.json"}, icon "calendar" and a one-line description. Then write its link to $url_file, replacing what is there, alone on one line, as the very last step: its time tells Sidak the report is out. Then stop; no summary in the terminal.
 EOF
 )
 # Each day's link into report-links.json (the board's calendar) once Claude writes report-url; the tab closing does not stop it, and
@@ -174,6 +198,8 @@ links = json.load(open(path)) if os.path.exists(path) else {}
 links[day] = url
 json.dump(links, open(path + ".tmp", "w"), indent=1, sort_keys=True); os.replace(path + ".tmp", path)' ${STATE:h}/report-links.json $day "$(head -1 $url_file)"
   rm -f $started ) &!
+# The page: report/index.html, titled with the day, beside facts.json.
+sed "s|<title>Sidak daily report</title>|<title>Sidak report $(date -j -f %F $day '+%a %-d %b')</title>|" $SIDAK_DIR/report/index.html > $out/$day/index.html
 cd $out
 claude --dangerously-skip-permissions --model ${MODEL:-sonnet} --effort ${EFFORT:-high} "$prompt"
 echo; echo "daily report $day finished (exit $?)"

@@ -1,0 +1,269 @@
+<title>Sidak daily report</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<!-- Sidak's daily report page, fixed: bin/daily-report copies it next to the day's facts.json (from GitHub and Sidak's state) and
+     words.json (written by Claude), and this script draws the page from the two. Change the look here, never per day. -->
+<style>
+  /* Layout: one 680px column: the day, a stat strip, your move / waiting / merged, then one fold-out card per PR. */
+  :root {
+    --bg: #f3f5f8; --surface: #ffffff; --sunk: #eceff4; --ink: #141920; --muted: #5a6371; --line: #dde2ea;
+    --accent: #2a57c2; --good: #16794a; --warn: #875409; --bad: #bb3830; --add: #16794a; --del: #bb3830;
+    --good-bg: #e2f2e8; --warn-bg: #faefd9; --bad-bg: #fae5e3; --info-bg: #e4ebfa;
+    --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+    --body: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg: #0e1116; --surface: #161a21; --sunk: #1c212a; --ink: #e6e9ef; --muted: #959dab; --line: #272d38;
+    --accent: #88a5ff; --good: #52c48d; --warn: #e2a954; --bad: #f07169; --add: #52c48d; --del: #f07169;
+    --good-bg: rgba(82, 196, 141, 0.14); --warn-bg: rgba(226, 169, 84, 0.15); --bad-bg: rgba(240, 113, 105, 0.15); --info-bg: rgba(136, 165, 255, 0.15);
+    color-scheme: dark;
+  } }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --surface: #161a21; --sunk: #1c212a; --ink: #e6e9ef; --muted: #959dab; --line: #272d38;
+    --accent: #88a5ff; --good: #52c48d; --warn: #e2a954; --bad: #f07169; --add: #52c48d; --del: #f07169;
+    --good-bg: rgba(82, 196, 141, 0.14); --warn-bg: rgba(226, 169, 84, 0.15); --bad-bg: rgba(240, 113, 105, 0.15); --info-bg: rgba(136, 165, 255, 0.15);
+    color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
+  main { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px;
+    padding-block: 24px 48px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  a { color: var(--accent); text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .eyebrow, h2, h3 { font: 500 11px/1.3 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+  h1 { font: 600 30px/1.1 var(--display); margin: 6px 0 12px; text-wrap: balance; }
+  #overview p { margin: 0 0 4px; max-width: 60ch; }
+  .made { font: 12px var(--mono); color: var(--muted); margin-top: 8px; }
+
+  /* The day in numbers: a strip, not tiles. */
+  .stats { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+  .stat { flex: 1 1 100px; padding: 12px 14px; display: flex; flex-direction: column; gap: 1px; box-shadow: -1px -1px 0 var(--line); }
+  .stat b { font: 600 24px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 13px; font-weight: 500; }
+  .stat small { font-size: 12px; color: var(--muted); }
+
+  /* Your move, waiting, merged: one row per PR, a link to its card. */
+  .moves { display: flex; flex-direction: column; gap: 10px; }
+  .rows { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .rows li + li { border-top: 1px solid var(--line); }
+  .rows a { display: grid; grid-template-columns: 4.6em 1fr; gap: 2px 10px; padding: 11px 14px; color: inherit; text-decoration: none; }
+  .rows a:hover { background: var(--sunk); }
+  .rows .num { font: 500 13px/1.5 var(--mono); color: var(--muted); grid-row: span 2; }
+  .rows .why { font-size: 13px; color: var(--muted); min-width: 0; }
+  .empty { margin: 0; font-size: 13px; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: 1px; background: var(--muted); }
+  [data-who="me"] .dot, .dot[data-who="me"] { background: var(--warn); }
+  [data-who="others"] .dot, .dot[data-who="others"] { background: var(--accent); }
+  [data-who="none"] .dot, .dot[data-who="none"] { background: var(--good); }
+
+  /* Jump row: every PR's number, colored by whose move it is. */
+  .jump { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+  .jump a { flex: none; font: 500 13px var(--mono); padding: 5px 10px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); text-decoration: none; }
+
+  /* PR cards. Closed: number, title, chips, Next. Open: what it is, our review, today, still open. */
+  .cards { display: flex; flex-direction: column; gap: 10px; }
+  .group { margin-top: 8px; }
+  details.pr { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; scroll-margin-top: 12px; }
+  details.pr > summary { list-style: none; cursor: pointer; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  details.pr > summary::-webkit-details-marker { display: none; }
+  .top { display: flex; gap: 10px; align-items: baseline; }
+  .top .num { font: 500 13px var(--mono); color: var(--muted); flex: none; }
+  .top .title { font: 600 17px/1.3 var(--display); flex: 1; min-width: 0; text-wrap: balance; }
+  .top .chev { flex: none; color: var(--muted); transition: transform 0.15s; }
+  details[open] .chev { transform: rotate(90deg); }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+  .chip { font: 500 12px/1 var(--body); padding: 4px 8px; border-radius: 999px; background: var(--sunk); color: var(--ink); white-space: nowrap; }
+  .chip.good { background: var(--good-bg); color: var(--good); }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); }
+  .chip.info { background: var(--info-bg); color: var(--accent); }
+  .next { padding: 9px 12px; border-radius: 10px; font-size: 14px; font-weight: 500; background: var(--sunk); }
+  .next b { display: block; font: 500 11px/1.4 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; }
+  .next[data-who="me"] { background: var(--warn-bg); color: var(--warn); }
+  .next[data-who="others"] { background: var(--info-bg); color: var(--accent); }
+  .next[data-who="none"] { background: var(--good-bg); color: var(--good); }
+  .body { padding: 2px 14px 16px; display: flex; flex-direction: column; gap: 18px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .body section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .what { margin: 0; max-width: 62ch; }
+  .facts { font: 12px var(--mono); color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .add { color: var(--add); } .del { color: var(--del); }
+  .diagram { overflow-x: auto; background: var(--sunk); border-radius: 10px; padding: 12px; }
+  .diagram svg { display: block; margin: 0 auto; max-width: none; height: auto; }
+  .points { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+  .runs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  .timeline li { display: grid; grid-template-columns: 3.4em 1fr; gap: 0 10px; padding: 6px 0; border-top: 1px dashed var(--line); }
+  .timeline li:first-child { border-top: 0; }
+  .timeline time { font: 13px/1.5 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .timeline b { font-weight: 600; margin-right: 6px; }
+  .timeline div { min-width: 0; font-size: 14px; }
+  .threads { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .threads li { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .threads code { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .threads .who { font-size: 13px; color: var(--muted); }
+  footer { font: 12px var(--mono); color: var(--muted); }
+  @media (prefers-reduced-motion: reduce) { .top .chev { transition: none; } }
+</style>
+
+<main>
+  <header>
+    <p class="eyebrow" id="day"></p>
+    <h1>Sidak daily report</h1>
+    <div id="overview"></div>
+    <p class="made" id="made"></p>
+  </header>
+  <div class="stats" id="stats" aria-label="The day in numbers"></div>
+  <section class="moves" aria-labelledby="h-me"><h2 id="h-me">Your move</h2><ul class="rows" id="needs"></ul></section>
+  <section class="moves" aria-labelledby="h-wait"><h2 id="h-wait">Waiting on others</h2><ul class="rows" id="waiting"></ul></section>
+  <section class="moves" aria-labelledby="h-merged"><h2 id="h-merged">Merged today</h2><ul class="rows" id="merged"></ul></section>
+  <nav class="jump" id="jump" aria-label="Jump to a PR"></nav>
+  <div class="cards" id="cards"></div>
+  <footer>Sidak &middot; facts from GitHub and Sidak's runs, words by Claude</footer>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const h = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+const load = (name) => fetch(name, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+const anchor = (key) => key.replace(/[^A-Za-z0-9]+/g, '-');
+
+Promise.all([load('facts.json'), load('words.json')]).then(([facts, words]) => draw(facts, words));
+
+function draw(facts, words) {
+  const prs = facts.prs || [], say = words.prs || {}, byKey = Object.fromEntries(prs.map((p) => [p.key, p]));
+  const who = (login) => (login === facts.me ? 'you' : login);
+  const title = (p) => say[p.key]?.title || p.title;
+  if (facts.day) $('#day').textContent = new Date(`${facts.day}T12:00`).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  for (const line of words.overview || []) $('#overview').append(h('p', null, line));
+  if (facts.made) $('#made').textContent = `Up to ${facts.made}`;
+
+  const c = facts.counts || {};
+  const stats = [
+    [c.prs, 'PRs', c.mine ? `${c.mine} yours` : ''],
+    [c.reviews, 'reviews', [c.approved && `${c.approved} approved`, c.changes && `${c.changes} changes`, c.commented && `${c.commented} commented`].filter(Boolean).join(' \u00b7 ')],
+    [c.self_checks, 'self-checks', 'on your PRs'],
+    [c.fixes, 'fixes', 'by Auto'],
+    [c.merged, 'merged', c.closed ? `${c.closed} closed` : ''],
+  ];
+  for (const [n, label, sub] of stats) {
+    const s = h('div', 'stat'); s.append(h('b', null, n ?? 0), h('span', null, label));
+    if (sub) s.append(h('small', null, sub));
+    $('#stats').append(s);
+  }
+
+  const row = (key, line, whoTone) => {
+    const p = byKey[key]; if (!p) return null;
+    const li = h('li'), a = h('a'); a.href = `#${anchor(key)}`;
+    const t = h('span', null); if (whoTone) { const d = h('span', 'dot'); d.dataset.who = whoTone; t.append(d); }
+    t.append(title(p));
+    a.append(h('span', 'num', `#${p.n}`), t, h('span', 'why', line || ''));
+    li.append(a); return li;
+  };
+  const fill = (sel, items) => { const ul = $(sel); items.filter(Boolean).forEach((li) => ul.append(li)); if (!ul.children.length) ul.replaceWith(h('p', 'empty', 'Nothing today.')); };
+  fill('#needs', (words.needs_me || []).map((m) => row(m.pr, m.why, 'me')));
+  fill('#waiting', (words.waiting || []).map((m) => row(m.pr, m.why, 'others')));
+  fill('#merged', prs.filter((p) => p.status === 'merged').sort((a, b) => (a.merged_at || '').localeCompare(b.merged_at || ''))
+    .map((p) => row(p.key, `${p.merged_at || ''} \u00b7 merged by ${who(p.merged_by)}`, 'none')));
+
+  const ordered = [...prs.filter((p) => !p.mine), ...prs.filter((p) => p.mine)];
+  ordered.forEach((p, i) => {
+    const a = h('a', null, `#${p.n}`); a.href = `#${anchor(p.key)}`; a.title = title(p);
+    const d = h('span', 'dot'); d.dataset.who = say[p.key]?.next?.who || ''; a.prepend(d);
+    $('#jump').append(a);
+    if (i === 0 || (p.mine && !ordered[i - 1].mine)) $('#cards').append(h('h2', 'group', p.mine ? 'Your PRs' : "Others' PRs"));
+    $('#cards').append(card(p, say[p.key] || {}, who));
+  });
+
+  const openHash = () => { const el = location.hash && document.getElementById(location.hash.slice(1)); if (el?.tagName === 'DETAILS') { el.open = true; el.scrollIntoView({ block: 'start' }); } };
+  addEventListener('hashchange', openHash); openHash();
+}
+
+function chips(p) {
+  const out = [];
+  out.push(p.status === 'merged' ? ['merged', 'good'] : p.status === 'closed' ? ['closed', ''] : p.draft ? ['draft', ''] : ['open', 'info']);
+  if (p.status !== 'merged' && p.status !== 'closed') {
+    const dec = { APPROVED: ['approved', 'good'], CHANGES_REQUESTED: ['changes requested', 'bad'], REVIEW_REQUIRED: ['review required', 'warn'] }[p.decision];
+    if (dec) out.push(dec);
+  }
+  const ck = { SUCCESS: ['checks pass', 'good'], FAILURE: ['checks fail', 'bad'], ERROR: ['checks fail', 'bad'], PENDING: ['checks running', ''], EXPECTED: ['checks waiting', ''] }[p.checks];
+  if (ck) out.push(ck);
+  return out.map(([text, tone]) => h('span', `chip ${tone}`, text));
+}
+
+function card(p, w, who) {
+  const box = h('details', 'pr'); box.id = anchor(p.key);
+  const sum = h('summary'), top = h('div', 'top');
+  top.append(h('span', 'num', `#${p.n}`), h('span', 'title', w.title || p.title), h('span', 'chev', '\u203a'));
+  const meta = h('div', 'meta'); meta.append(h('span', null, `${p.repo} \u00b7 ${who(p.author)}`), ...chips(p));
+  sum.append(top, meta);
+  if (w.next?.text) {
+    const next = h('div', 'next'); next.dataset.who = w.next.who || '';
+    next.append(h('b', null, { me: 'Next \u00b7 you', others: 'Next \u00b7 waiting', none: 'Done' }[w.next.who] || 'Next'), w.next.text);
+    sum.append(next);
+  }
+  box.append(sum);
+
+  const body = h('div', 'body');
+  const section = (label, ...kids) => { const s = h('section'); s.append(h('h3', null, label), ...kids); body.append(s); };
+  const what = [];
+  if (w.what) what.push(h('p', 'what', w.what));
+  const graph = p.diagram || w.diagram;
+  if (graph) { const d = h('div', 'diagram'); d.dataset.src = graph; what.push(d); }
+  const facts = h('p', 'facts');
+  const size = h('span'); size.append(h('span', 'add', `+${p.add}`), ' ', h('span', 'del', `\u2212${p.del}`), ' lines');
+  const link = h('a', null, 'Open on GitHub'); link.href = p.url; link.target = '_blank'; link.rel = 'noopener';
+  facts.append(size, h('span', null, `base ${p.base}`), link);
+  what.push(facts);
+  section('What it is', ...what);
+
+  // One chip per kind of run: how many, when, and the last one's verdict.
+  const runs = h('div', 'runs'), kinds = {};
+  for (const r of p.runs || []) (kinds[`${r.depth} ${r.kind}`] ??= []).push(r);
+  for (const [kind, list] of Object.entries(kinds)) {
+    const last = list.at(-1), tone = { approved: 'good', changes: 'bad', commented: 'info' }[last.verdict] || '';
+    const when = list.length > 1 ? `${list[0].at}\u2013${last.at}` : last.at;
+    const verdict = last.verdict ? ` \u00b7 ${last.verdict === 'changes' ? 'changes asked' : last.verdict}` : '';
+    runs.append(h('span', `chip ${tone}`, `${list.length > 1 ? list.length + ' ' : ''}${kind}${list.length > 1 ? 's' : ''} ${when}${verdict}`));
+  }
+  const found = h('ul', 'points'); (w.found || []).forEach((f) => found.append(h('li', null, f)));
+  if (runs.children.length || found.children.length) section(p.mine ? 'Our self-check' : 'Our review', ...[runs, found].filter((n) => n.children.length));
+
+  if (w.today?.length) {
+    const ol = h('ol', 'timeline');
+    for (const [at, by, did] of w.today) { const li = h('li'), t = h('time', null, at || ''), d = h('div'); d.append(h('b', null, by || ''), did || ''); li.append(t, d); ol.append(li); }
+    section('Today', ol);
+  }
+  if (w.open?.length) {
+    const ul = h('ul', 'threads');
+    for (const [where, q, by] of w.open) { const li = h('li'); li.append(h('code', null, where || ''), h('span', null, q || ''), h('span', 'who', by ? `\u2192 ${by}` : '')); ul.append(li); }
+    section('Still open', ul);
+  }
+  box.append(body);
+  box.addEventListener('toggle', () => box.open && box.querySelectorAll('.diagram[data-src]').forEach(render));
+  return box;
+}
+
+// Diagrams draw the first time their card opens: Mermaid cannot measure inside a closed card.
+let mermaidReady;
+function mermaidLib() {
+  return (mermaidReady ??= new Promise((ok, fail) => {
+    if (window.mermaid) return ok(window.mermaid);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.6.0/mermaid.min.js';
+    s.onload = () => ok(window.mermaid); s.onerror = fail;
+    document.head.append(s);
+  }).then((m) => {
+    const css = getComputedStyle(document.documentElement), v = (n) => css.getPropertyValue(n).trim();
+    m.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'base', fontFamily: v('--body'),
+      themeVariables: { fontSize: '13px', primaryColor: v('--surface'), primaryTextColor: v('--ink'), primaryBorderColor: v('--muted'),
+        lineColor: v('--muted'), secondaryColor: v('--info-bg'), tertiaryColor: v('--sunk'), background: v('--sunk') } });
+    return m;
+  }));
+}
+let diagrams = 0;
+function render(box) {
+  const src = box.dataset.src; delete box.dataset.src;
+  mermaidLib().then((m) => m.render(`diagram-${++diagrams}`, src)).then(({ svg }) => { box.innerHTML = svg; }).catch(() => box.remove());
+}
+</script>
