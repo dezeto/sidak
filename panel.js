@@ -18,7 +18,17 @@ list.addEventListener('mouseover', ({ target }) => {
   hot?.removeAttribute('data-hot');
   hot = row;
   hot?.setAttribute('data-hot', '');
+  // The tooltip only when the two-line clamp cut the title; a whole title needs no echo.
+  const title = hot?.querySelector('.title');
+  if (title) hot.title = title.scrollHeight > title.clientHeight ? title.textContent : '';
 });
+// Scrollbar like macOS's: the thumb shows while a list scrolls and for a second after (panel.html data-scrolling).
+let scrollEnd;
+addEventListener('scroll', () => {
+  document.documentElement.dataset.scrolling = '';
+  clearTimeout(scrollEnd);
+  scrollEnd = setTimeout(() => delete document.documentElement.dataset.scrolling, 1000);
+}, { capture: true, passive: true });
 list.addEventListener('mouseleave', () => {
   hot?.removeAttribute('data-hot');
   hot = null;
@@ -188,6 +198,11 @@ const pollSeg = document.querySelector('#settings [data-setting="pollMinutes"]')
 const staleSeg = document.querySelector('#settings [data-setting="staleDays"]');
 const capBox = document.getElementById('auto-cap');
 const quietSeg = document.querySelector('#settings [data-setting="quiet"]');
+// Quiet hours, as pr-board auto reads them: nights 22:00-08:00, week adds the weekend.
+function quietNow(now = new Date()) {
+  const night = now.getHours() >= 22 || now.getHours() < 8;
+  return (['night', 'week'].includes(settings.quiet) && night) || (settings.quiet === 'week' && [0, 6].includes(now.getDay()));
+}
 const vipBox = document.getElementById('vip');
 const vipList = document.getElementById('vip-list');
 const vipPeople = document.getElementById('vip-people');
@@ -220,11 +235,23 @@ function renderFoot() {
   const label = (key) => document.querySelector(`#settings .seg[data-key="${key}"] button[value="${picks[key]}"]`)?.textContent ?? picks[key];
   const pick = (text, what) =>
     el('button', { type: 'button', className: 'pick', textContent: text, title: `${what}: settings`, ariaExpanded: !settingsFold.hidden, onclick: () => toggleSettings() });
+  // A sign: the Auto or Phone icon alone, dimmed while off; the tooltip says the rest, and a tap opens the settings too.
+  const sign = (iconId, what, on) => {
+    const button = Object.assign(pick('', what), { className: 'pick sign', ariaLabel: `${what}: settings` });
+    button.prepend(icon(iconId));
+    if (!on) button.dataset.off = '';
+    return button;
+  };
   const profile = settings.profile || config.defaultProfile;
   // The settings chip: what a click runs with, profile · model · effort, in one capsule.
-  footConfig.replaceChildren(
+  footConfig.replaceChildren(...[
     Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
-  );
+    !settings.auto?.on ? sign('i-auto', 'Auto review is off', false)
+      : settings.autoCap ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, true)
+      : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`, true),
+    // Phone access: so an open tunnel is never forgotten. Only where a tunnel is set up (config.json remote).
+    config.remote?.team && sign('i-phone', `Phone access is ${phoneOn() ? 'on' : 'off'}`, phoneOn()),
+  ].filter(Boolean));
   // Today's usage sits by the sync time, both muted on the right.
   Object.assign(used, {
     hidden: !today.tokens,
@@ -378,7 +405,6 @@ function tldrToggle(row, word, lines, key) {
 function prRow(pr) {
   const row = rowTemplate.cloneNode(true);
   row.href = pr.url;
-  row.title = pr.title;
   row.dataset.state = pr.review;
   row.querySelector('.title').textContent = pr.title;
   row.querySelector('.time').textContent = ago(pr.updatedAt);

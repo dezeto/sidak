@@ -25,9 +25,13 @@
     --dot-blue: #5b8def;
     --dot-green: #1f9a48;
     --dot-red: #e0443e;
-    scrollbar-width: thin;
-    scrollbar-color: var(--lg-border-subtle) transparent;
   }
+  /* A 3 px thumb, thinner than scrollbar-width: thin allows. Chromium skips these while scrollbar-width/-color are set, so keep those off. */
+  ::-webkit-scrollbar { width: 7px; height: 7px; background: transparent; }
+  ::-webkit-scrollbar-thumb { border: 2px solid transparent; border-radius: 4px; background: transparent padding-box; }
+  /* Shown while scrolling (panel.js data-scrolling) or under the pointer, so it can still be dragged. */
+  :root[data-scrolling]::-webkit-scrollbar-thumb, :root[data-scrolling] *::-webkit-scrollbar-thumb, ::-webkit-scrollbar-thumb:hover { background-color: rgba(127, 127, 127, 0.4); }
+  ::-webkit-scrollbar-corner { background: transparent; }
   @media (prefers-color-scheme: dark) {
     :root {
       --green: #3fb950;
@@ -623,6 +627,9 @@
   /* The card under the pointer is data-hot (panel.js), not :hover: WebKit misses some :hover restyles under rows in folds, which left the
      avatars over Skim. One attribute shows the buttons and hides the avatars together. */
   .pr:is([data-hot], :focus-within) { background: var(--row-hover); }
+  /* The highlight sits 4 px in from the panel's edge with rounded corners, like the glass around it; content and stripe keep their place. */
+  :root:not([data-remote]) .pr { margin-inline: 4px; padding-inline: 16px; }
+  :root:not([data-remote]) .pr:is([data-hot], :focus-within) { border-radius: 10px; }
   .pr:focus-visible { outline-offset: -2px; }
   .pr > .icon { display: none; }
   /* Status icon (panel.js statusMark), in the status colour: amber to review, blue running, green reviewed, red failed; on my own PRs
@@ -651,7 +658,10 @@
   @media (prefers-reduced-motion: reduce) { .pr[data-claude='running']::before { animation: none; } }
   .pr[data-verdict='changes']:not([data-follow]) { --stripe: var(--dot-red); }
   .pr[data-verdict='commented']:not([data-follow]) { --stripe: var(--grey); }
-  .pr::before { content: ''; position: absolute; left: 8px; top: 11px; bottom: 11px; width: 4px; border-radius: 2px; background: var(--stripe); }
+  .pr::before { content: ''; position: absolute; left: 8px; top: 11px; bottom: 11px; width: 3px; border-radius: 2px; background: var(--stripe); opacity: 0.55; }
+  :root:not([data-remote]) .pr::before { left: 4px; }
+  /* Full strength only where it needs me: failed, my PR's to-do, a follow-up, a run going. */
+  .pr:is([data-claude='failed'], [data-claude='running'], [data-group='needs'], [data-follow])::before { opacity: 1; }
   .stack > .pr::before { top: 0; bottom: 0; border-radius: 0; }
   .stack > .pr:first-of-type::before { top: 11px; border-radius: 2px 2px 0 0; }
   .stack > .pr:last-child::before { bottom: 11px; border-radius: 0 0 2px 2px; }
@@ -673,7 +683,7 @@
   .pr:is([data-hot], :focus-within) .actions { display: flex; }
   :root:not([data-remote]) .pr[data-acts]:is([data-hot], :focus-within) :is(.avatars, .time) { display: none; }
   /* Three buttons (my own PR: Fix / Nudge / Merge first): the capsules tighten. */
-  .actions:has(> :nth-child(3)) .review { padding: 0 10px; }
+  .actions:has(> :nth-child(3)) .review { padding: 0 7px; }
   .time { grid-column: 4; grid-row: 1 / span 2; font-size: 11.5px; font-weight: 500; color: var(--lg-ink-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   /* The meta line: words 10 px apart, no separators. The status word is in its state's colour, the accent when the PR is back. */
   .meta { grid-row: 2; display: flex; align-items: center; gap: 10px; min-height: 15px; font-size: 11.5px; line-height: 15px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
@@ -704,11 +714,11 @@
   .more { margin-left: 5px; font-size: 11px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; }
   /* Row buttons: glass capsules with their key; Deep (and Fix or Merge on my own PRs, which then leave Deep as glass) filled with the accent,
      a shade deeper so its white label keeps 4.5:1. */
-  .review { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 16px; font-size: 12px; font-weight: 600; color: var(--lg-ink); white-space: nowrap; }
-  .review kbd { margin-left: 7px; padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--lg-ink) 10%, transparent); font: 600 10px/14px -apple-system, system-ui, sans-serif; color: var(--lg-ink-muted); }
+  .review { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 12px; font-size: 11.5px; font-weight: 600; color: var(--lg-ink); white-space: nowrap; }
+  .review kbd { margin-left: 5px; padding: 0 4px; border-radius: 4px; background: color-mix(in srgb, var(--lg-ink) 10%, transparent); font: 600 10px/14px -apple-system, system-ui, sans-serif; color: var(--lg-ink-muted); }
   .review:is(.merge, .fix, .approve), .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] {
     border-color: transparent; background: color-mix(in srgb, var(--lg-accent) 82%, #000); color: #fff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 12px color-mix(in srgb, var(--lg-accent) 35%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 2px 6px color-mix(in srgb, var(--lg-accent) 35%, transparent);
   }
   .review:is(.merge, .fix, .approve):hover, .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full']:hover { background: color-mix(in srgb, var(--lg-accent) 72%, #000); }
   .review:is(.merge, .fix, .approve) kbd, .actions:not(:has(.merge, .fix, .approve)) > .review[data-depth='full'] kbd { background: rgba(0, 0, 0, 0.25); color: rgba(255, 255, 255, 0.9); }
@@ -736,6 +746,7 @@
   #foot .run:hover { background: var(--hover); }
   #foot .sign { display: inline-flex; align-items: center; gap: 4px; }
   #foot .sign svg { width: 14px; height: 14px; }
+  #foot .sign[data-off] { opacity: 0.45; }
   :root:not([data-remote]) #status[data-time] { display: none; }
   :root:not([data-remote]) #used::after { content: none; }
   :root:not([data-remote]) #used { margin-right: 0; }
