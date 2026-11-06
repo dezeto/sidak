@@ -3,6 +3,7 @@
 # Org, login, checkout dir, memory and profiles come from config.json beside bin/, as for claude-review.
 #   claude-fix [<repo>] <pr>      repo defaults to the first reviewable one
 #   PROFILE=cc ... / MODEL=sonnet ... / EFFORT=medium ...
+#   RESUME=<session id>: resume the session that opened the PR (claude-review-open, bin/author-session) instead of a fresh one
 set -u
 # The whole script in one block, read before any of it runs: an edit while a review is open cannot shift what is left to read.
 {
@@ -45,7 +46,7 @@ read branch head <<< "$(gh pr view "$n" -R "$REPO" --json headRefName,headRefOid
 started=$(( $(date +%s) * 1000 ))
 # The summary for the board (the card's Fixed), written by Claude, stored into Sidak's autolog.json once it exits (store_note).
 NOTE=$(mktemp)
-echo "== fix $repo#$n on $branch (PROFILE=$PROFILE MODEL=${MODEL:-opus} EFFORT=${EFFORT:-high}) =="
+echo "== fix $repo#$n on $branch (PROFILE=$PROFILE MODEL=${MODEL:-opus} EFFORT=${EFFORT:-high}${RESUME:+ RESUME=$RESUME}) =="
 mark running
 # Work where the branch already is (never a second checkout of the same branch); otherwise a worktree tracking origin.
 git -C $CRM fetch origin "$branch" || finish 1
@@ -60,7 +61,11 @@ fi
 sys=$(mktemp)
 cat "$MEM/MEMORY.md" "$CRMMEM/feedback_kent_beck_style.md" "$CRMMEM/feedback_no_claude_footer_on_issue_comments.md" > "$sys" 2>/dev/null
 cd "$dir"
+# A resumed session wrote this PR, maybe in another checkout: it now works here. claude --resume finds a session from any directory.
+resume=() intro=""
+[[ -n ${RESUME:-} ]] && resume=(--resume $RESUME) intro="You opened this PR earlier in this session. Sidak resumed you to fix it; it is now checked out in $dir."
 prompt=$(cat <<EOF
+$intro
 This is my own PR #$n in $REPO (author $login), checked out on its branch $branch in this directory. Get it unblocked.
 
 Read first: gh pr view $n for the description; the review threads (GraphQL reviewThreads on the PR with isResolved, path, line and comments), gh api repos/$REPO/pulls/$n/comments, repos/$REPO/pulls/$n/reviews, repos/$REPO/issues/$n/comments; gh pr checks $n and, for a failed check, gh run view <id> --log-failed; whether the branch conflicts with origin/main. Your memory files live in $MEM; read any whose index line looks relevant.
@@ -76,7 +81,7 @@ Finish with a short summary in this terminal: what changed per point, what you l
 Last, write the same summary to $NOTE as exactly three lines, in plain words, no paths or shas: "- Done: <what you changed, one sentence>", "- Left: <what you left alone and why, or nothing>", "- Failing: <what still fails, or nothing>".
 EOF
 )
-claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
+claude $resume --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
 rc=$?
 # Onto the fix's autolog.json entry (pr-board auto's, made as it started this), else a new one marked manual (a Fix from the board).
 python3 - ${STATE:h}/autolog.json "$REPO#$n" $started $head $NOTE <<'PY'

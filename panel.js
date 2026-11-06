@@ -577,6 +577,7 @@ function prRow(pr) {
       chips.append(word);
       if (lines.size) tldrToggle(row, word, lines, `${repoOf(pr)}#${pr.number} fix`);
     }
+    if (pr.sent) chips.append(el('span', { className: 'state', textContent: 'Fix sent', title: `Queued in your Claude session (${pr.sent})` }));
     if (chips.childElementCount) row.append(chips);
   }
   // Claude reviewed it and left only comments, nothing blocking: Approve is the next step, mine to take (Claude approves by itself
@@ -722,6 +723,8 @@ function board(sections, state) {
     pr.tldr = entry?.tldr ?? null;
     pr.fix = autoLogEntries.findLast((e) => e.kind === 'fix' && e.summary && e.pr === `${repoOf(pr)}#${pr.number}`)?.summary ?? null;
     pr.report = entry?.report ?? null;
+    // The fix ask queued into the session that opened this PR (claude-review-open ccfix): its cmux workspace title.
+    pr.sent = entry?.sent ?? null;
     // The head a self-check last read (claude-review's sha): newer commits on my PR wait for Auto's next one before a Nudge.
     pr.checkedSha = entry?.report ? entry.sha ?? null : null;
     pr.tokens = entry?.tokens ?? null;

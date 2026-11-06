@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+# The Claude session that opened a PR, for claude-review-open's ccfix: Claude Code logs a "pr-link" record (session id, PR url) in
+# the session that opened the PR. Searched in every config.json profile, newest first; review sessions (review-* worktrees) skipped.
+#   author-session <owner/repo> <pr>
+# Prints "<session id>\t<profile>\t<surface>\t<workspace ref>\t<workspace title>": the last three only while it runs in a cmux tab
+# (the tab's resume binding holds the id; it goes when Claude exits there). Nothing when no session is linked.
+import glob, json, mmap, os, subprocess, sys
+
+sidak = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+config = json.load(open(os.path.join(sidak, "config.json")))
+nwo, n = sys.argv[1], sys.argv[2]
+needle = f'"prUrl":"https://github.com/{nwo}/pull/{n}"'.encode()
+# ponytail: a byte search over every top-level session log (about 2 GB here, 1-4 s; macOS grep takes 10); an index if it grows.
+found = []
+for profile, home in config["profiles"].items():
+    for f in glob.glob(os.path.join(os.path.expanduser(home or "~/.claude"), "projects", "*", "*.jsonl")):
+        if "-worktrees-review-" in f: continue
+        with open(f, "rb") as h:
+            if os.fstat(h.fileno()).st_size and mmap.mmap(h.fileno(), 0, access=mmap.ACCESS_READ).find(needle) != -1:
+                found.append((os.path.getmtime(f), f, profile))
+if not found: sys.exit()
+_, log, profile = max(found)
+sid = os.path.basename(log).removesuffix(".jsonl")
+
+cmux = "/Applications/cmux.app/Contents/Resources/bin/cmux"
+def run(*args):
+    out = subprocess.run([cmux, "--json", *args], capture_output=True, text=True)
+    return json.loads(out.stdout) if out.returncode == 0 else {}
+surface = wsref = title = ""
+for window in run("tree", "--all").get("windows", []):
+    for workspace in window["workspaces"]:
+        for pane in workspace["panes"]:
+            for s in pane["surfaces"]:
+                if s["type"] == "terminal" and (run("surface", "resume", "get", "--surface", s["ref"]).get("resume_binding") or {}).get("checkpoint_id") == sid:
+                    surface, wsref, title = s["ref"], workspace["ref"], workspace["title"]
+print(f"{sid}\t{profile}\t{surface}\t{wsref}\t{title}")

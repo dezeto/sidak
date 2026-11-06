@@ -199,7 +199,7 @@ EOF
 [[ -n $mine ]] && prompt+=$(cat <<EOF
 
 
-This is my own PR: ignore the posting and handoff steps above. Post no GitHub review and no comment. Run the same checks and write the findings to $HANDOFF, replacing what is there, as a fix list for another Claude session that will fix them on this branch. Start it with the "## TL;DR" section described above; then the full sha you reviewed and the depth; the AC table; then "## Fixes": numbered, most important first, each with path:line, the problem, the fix you expect (code when a snippet makes it shorter) and whether it blocks; then anything you checked and found fine. Writing it is your last step: print its path and stop, this session closes automatically shortly after.
+This is my own PR: ignore the posting and handoff steps above. Post no GitHub review and no comment. Run the same checks and write the findings to $HANDOFF, replacing what is there, as a fix list for another Claude session that will fix them on this branch. Start it with the "## TL;DR" section described above; then the full sha you reviewed and the depth; the AC table; then "## Fixes": numbered, most important first, each starting with **Blocking**, **Should fix** or **Non-blocking** (Sidak hands a list with a Blocking fix to the session that opened the PR), then path:line, the problem and the fix you expect (code when a snippet makes it shorter); then anything you checked and found fine. Writing it is your last step: print its path and stop, this session closes automatically shortly after.
 EOF
 )
 claude --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"

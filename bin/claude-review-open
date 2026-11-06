@@ -62,8 +62,20 @@ if [[ $scheme == ccfix ]]; then
   # From Auto (FOCUS=false) a fix is never running here (pr-board checks), so its tab is an idle one: closed, and a fresh one starts.
   if [[ -n $ref && ${FOCUS:-true} == false ]]; then $cmux close-workspace --workspace "$ref" --force >/dev/null 2>&1; ref=""; fi
   if [[ -n $ref ]]; then exec $cmux workspace select "$ref"; fi
+  # The session that opened the PR fixes it, with what it already knows (bin/author-session). Running in a tab: the ask is queued
+  # there (cmux agent message goes through Claude's hooks, never typed; a busy session reads it at its next step) and the card says
+  # Fix sent. Closed: claude-fix resumes it (RESUME) on its own profile. No linked session: a fresh claude-fix.
+  IFS=$'\t' read sid sprofile surface wsref title <<< "$($SIDAK_DIR/bin/author-session $org/$repo $n)"
+  if [[ -n $surface ]]; then
+    $cmux agent message "$surface" --from Sidak -- "Sidak: my PR #$n ($org/$repo) needs fixing. If $SIDAK_DIR/reviews/$repo-$n.md exists, it is my self-check's fix list for it: apply each fix that still applies, the blocking ones first. Then every unresolved review thread or change request, failing checks (gh pr checks $n) and conflicts with the base. Stay inside the PR's scope, commit in small signed commits, push, reply on each thread you addressed with one line and the sha, and re-request review from whoever asked for changes." >/dev/null || exit 1
+    # Onto the PR's state.json entry (its self-check), which the next self-check replaces. No entry: none made, as one would count as a run.
+    python3 -c 'import json, sys, time; p, k, t = sys.argv[1:]; d = json.load(open(p))
+if k in d: d[k].update(sent=t, sentAt=int(time.time() * 1000)); json.dump(d, open(p, "w"))' $SIDAK_DIR/state.json "$org/$repo#$n" "$title"
+    [[ ${FOCUS:-true} == true ]] && $cmux workspace select "$wsref"
+    exit 0
+  fi
   exec $cmux new-workspace --focus ${FOCUS:-true} --name "fix $repo#$n" --cwd "$repos/$repo" \
-    --command "PROFILE=$profile ${model:+MODEL=$model }${effort:+EFFORT=$effort }${(q)SIDAK_DIR}/bin/claude-fix $repo $n"
+    --command "PROFILE=${sprofile:-$profile} ${sid:+RESUME=$sid }${model:+MODEL=$model }${effort:+EFFORT=$effort }${(q)SIDAK_DIR}/bin/claude-fix $repo $n"
 fi
 # Focus only while state.json says the review is still running; a finished run's idle workspace is closed and a fresh one starts (re-review).
 ref=$(CMUX_QUIET=1 $cmux workspace list 2>/dev/null | grep -E "review $repo#$n( |$)" | grep -oE 'workspace:[0-9]+' | head -1)

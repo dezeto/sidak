@@ -349,11 +349,20 @@ def checks(pr):
                 if not INFRA.search("\n".join(log.splitlines()[-300:])): return "failing", set()
         runs.add(run.group(1))
     return ("flaky", runs) if runs else (None, set())
+# My self-check of this head left a fix list with a Blocking fix (claude-review requires each fix to start **Blocking**, **Should fix**
+# or **Non-blocking**): handed to the session that opened the PR (claude-review-open ccfix), at most twice per PR (autofix.json
+# "<key> handoff"); after that the fix list waits for me.
+def blocking(pr):
+    entry = state.get(key(pr), {})
+    report = entry.get("report") or ""
+    return (entry.get("state") == "reviewed" and entry.get("sha") == pr["headRefOid"] and os.path.exists(report)
+            and len(fixed.get(key(pr) + " handoff", [])) < 2 and re.search(r"^\d+\. \*\*Blocking", open(report).read(), re.M) is not None)
 def why_fix(pr, ci):
     why = []
     if ci == "failing": why.append("failing checks")
     if pr.get("mergeable") == "CONFLICTING": why.append("conflicts")
     if asks(pr): why.append("change requests")
+    if blocking(pr): why.append("blocking self-check fixes")
     return ", ".join(why)
 # A flaky failure gets its failed jobs rerun instead, once per head commit (autofix.json "<key> rerun"): no tokens, and claude-fix only
 # sees real failures. Failing again after the rerun, it goes to claude-fix.
@@ -485,11 +494,14 @@ def depth_of(pr):
     why = [name for name, rule in RISKY if any(rule.search(path) for path in paths)]
     if info["additions"] + info["deletions"] > 500: why.append(f'{info["additions"] + info["deletions"]} lines')
     return ("full" if why else "quick"), ", ".join(why)
-picked = fixes[:left]
+# One fix a tick: the PRs of a stack share the session that opened them, and two started on one tick both resumed it (three Claude
+# processes on one session). The next tick finds it open in its tab and queues the ask there (claude-review-open ccfix).
+picked = fixes[:1 if left is None else min(left, 1)]
 for pr, why in picked:
     repo, n = pr["repository"]["name"], pr["number"]
     print(f'ccfix://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}\t{repo}#{n} Fix ({why})')
     fixed.setdefault(key(pr), []).append(pr["headRefOid"])
+    if "self-check" in why: fixed.setdefault(key(pr) + " handoff", []).append(pr["headRefOid"])
     note(pr, "fix", f"Fix ({why})", sha=pr["headRefOid"])
 # ponytail: marked when printed, so a fix whose cmux tab failed to open waits for the next push.
 if picked and not os.environ.get("DRY"):
