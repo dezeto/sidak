@@ -6,25 +6,15 @@
      words.json (written by Claude), and this script draws the page from the two. Change the look here, never per day. -->
 <style>
   /* Layout: one 680px column: the day, a stat strip, your move / waiting / merged, then one fold-out card per PR. */
+  /* Dark only, like Sidak's panel: the page commits to one look in either theme. */
   :root {
-    --bg: #f3f5f8; --surface: #ffffff; --sunk: #eceff4; --ink: #141920; --muted: #5a6371; --line: #dde2ea;
-    --accent: #2a57c2; --good: #16794a; --warn: #875409; --bad: #bb3830; --add: #16794a; --del: #bb3830;
-    --good-bg: #e2f2e8; --warn-bg: #faefd9; --bad-bg: #fae5e3; --info-bg: #e4ebfa;
+    color-scheme: dark;
+    --bg: #000000; --surface: #0c0d10; --sunk: #14161b; --ink: #eceef2; --muted: #8f97a4; --line: #1d2027;
+    --accent: #8aa7ff; --good: #55c690; --warn: #e5ac58; --bad: #f2736b; --add: #55c690; --del: #f2736b;
+    --good-bg: rgba(85, 198, 144, 0.12); --warn-bg: rgba(229, 172, 88, 0.13); --bad-bg: rgba(242, 115, 107, 0.13); --info-bg: rgba(138, 167, 255, 0.13);
     --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
     --body: "IBM Plex Sans", -apple-system, system-ui, sans-serif;
     --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
-  }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-    --bg: #000000; --surface: #0c0d10; --sunk: #14161b; --ink: #eceef2; --muted: #8f97a4; --line: #1d2027;
-    --accent: #8aa7ff; --good: #55c690; --warn: #e5ac58; --bad: #f2736b; --add: #55c690; --del: #f2736b;
-    --good-bg: rgba(85, 198, 144, 0.12); --warn-bg: rgba(229, 172, 88, 0.13); --bad-bg: rgba(242, 115, 107, 0.13); --info-bg: rgba(138, 167, 255, 0.13);
-    color-scheme: dark;
-  } }
-  :root[data-theme="dark"] {
-    --bg: #000000; --surface: #0c0d10; --sunk: #14161b; --ink: #eceef2; --muted: #8f97a4; --line: #1d2027;
-    --accent: #8aa7ff; --good: #55c690; --warn: #e5ac58; --bad: #f2736b; --add: #55c690; --del: #f2736b;
-    --good-bg: rgba(85, 198, 144, 0.12); --warn-bg: rgba(229, 172, 88, 0.13); --bad-bg: rgba(242, 115, 107, 0.13); --info-bg: rgba(138, 167, 255, 0.13);
-    color-scheme: dark;
   }
   body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
   main { max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px;
