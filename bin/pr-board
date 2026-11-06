@@ -534,8 +534,9 @@ PY
 }
 
 # Finished review and fix tabs (cmux workspaces "review <repo>#<n>" / "fix <repo>#<n>" whose state.json entry is not running) close
-# 10 minutes after a tick first sees them idle, kept in tabs-idle.json; the tab I have selected, or pinned, stays, and so does a fix tab
-# whose Claude is still open (claude-fix settles on Claude's summary, then leaves the session to me). Every tick, Auto on or off.
+# 10 minutes after a tick first sees them idle, kept in tabs-idle.json; the tab I have selected, or pinned, stays. A fix tab settles on
+# Claude's summary with Claude still open: idle once Claude stops working in it, and closed 10 minutes on (claude-review-open resumes
+# the session when a fix needs it again). Every tick, Auto on or off.
 tidy() {
   CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password 2>/dev/null) \
     python3 - $STATE $SIDAK_DIR/tabs-idle.json $ORG <<'PY'
@@ -550,11 +551,41 @@ idle, now = {}, time.time()
 for ws in json.loads(out.stdout)["workspaces"]:
     title = re.fullmatch(r"(?:review|fix) (\S+)#(\d+)", ws.get("custom_title") or "")
     if not title or ws.get("selected") or ws.get("pinned") or state.get(f"{org}/{title[1]}#{title[2]}", {}).get("state") == "running": continue
-    if subprocess.run(["pgrep", "-f", f"bin/claude-fix {title[1]} {title[2]}$"], capture_output=True).returncode == 0: continue
+    # ponytail: Claude at work shows "esc to interrupt" on its status line, the bottom of the screen; cmux reports no agent state.
+    screen = subprocess.run([cmux, "read-screen", "--workspace", ws["ref"]], capture_output=True, text=True).stdout
+    if "esc to interrupt" in "\n".join(screen.splitlines()[-15:]): continue
     idle[ws["ref"]] = seen.get(ws["ref"], now)
     if now - idle[ws["ref"]] >= 600 and subprocess.run([cmux, "close-workspace", "--workspace", ws["ref"], "--force"], capture_output=True).returncode == 0:
         del idle[ws["ref"]]
 open(idle_path + ".tmp", "w").write(json.dumps(idle)); os.replace(idle_path + ".tmp", idle_path)
+PY
+}
+
+# A fix ask queued into an open session (claude-review-open ccfix) ends with that session's summary in reviews/<repo>-<n>.fixed: it goes
+# onto the ask's autolog.json fix entry (pr-board auto's, made as it asked), else a new one marked manual (a Fix from the board), the
+# card's Fix sent becomes Fixed, and the file goes. Every tick, Auto on or off.
+fixed_notes() {
+  python3 - $STATE $ORG <<'PY'
+import glob, json, os, sys, time
+state_path, org = sys.argv[1:]
+root = os.path.dirname(state_path)
+notes = glob.glob(os.path.join(root, "reviews", "*.fixed"))
+if not notes: sys.exit()
+state = json.load(open(state_path))
+log_path = os.path.join(root, "autolog.json")
+log = json.load(open(log_path)) if os.path.exists(log_path) else []
+for path in notes:
+    repo, n = os.path.basename(path)[:-len(".fixed")].rsplit("-", 1)
+    key, text = f"{org}/{repo}#{n}", open(path).read().strip()
+    entry = state.get(key, {})
+    sent = entry.pop("sentAt", 0) or int(time.time() * 1000)
+    entry.pop("sent", None)
+    fix = next((e for e in reversed(log) if e["pr"] == key and e["kind"] == "fix" and "summary" not in e and e["at"] >= sent - 300000), None)
+    if fix is None: log.append(fix := {"at": sent, "kind": "fix", "pr": key, "text": "Fix", "sha": entry.get("sha", ""), "manual": True})
+    if text: fix["summary"] = text
+    os.remove(path)
+open(state_path + ".tmp", "w").write(json.dumps(state)); os.replace(state_path + ".tmp", state_path)
+open(log_path + ".tmp", "w").write(json.dumps(log)); os.replace(log_path + ".tmp", log_path)
 PY
 }
 
@@ -646,7 +677,7 @@ case $cmd in
   learn) learn ;;
   # One tick at a time, each waiting for the one before (the lock goes with this process): Sidak ticks on its timer and again when
   # a run settles, and two at once both started the same fix (crm#22146 twice, 5 s apart).
-  auto) zmodload zsh/system; : >> ${STATE:h}/.auto.lock; zsystem flock ${STATE:h}/.auto.lock; tidy; prune; auto ;;
+  auto) zmodload zsh/system; : >> ${STATE:h}/.auto.lock; zsystem flock ${STATE:h}/.auto.lock; fixed_notes; tidy; prune; auto ;;
   quick|review) start ;;
   status) status ;;
   brief) brief ;;

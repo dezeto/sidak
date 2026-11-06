@@ -69,12 +69,12 @@ if [[ $scheme == ccfix ]]; then
     if [[ -n $ref ]]; then exec $cmux workspace select "$ref"; fi
     # The session that opened the PR fixes it, with what it already knows (bin/author-session). Running in a tab: the ask is queued
     # there (cmux agent message goes through Claude's hooks, never typed; a busy session reads it at its next step) and the card says
-    # Fix sent. Closed: claude-fix resumes it (RESUME) on its own profile. No linked session: a fresh claude-fix.
+    # Fix sent, until the session's summary comes back (pr-board fixed_notes). Closed: claude-fix resumes it (RESUME) on its own profile. No linked session: a fresh claude-fix.
     IFS=$'\t' read sid sprofile surface wsref title <<< "$($SIDAK_DIR/bin/author-session $org/$repo $n)"
   fi
   if [[ -n $surface ]]; then
     # Sent from no tab: Sidak.app launched from a cmux tab inherits its CMUX_* ids, and the session's replies would land in that tab.
-    env -u CMUX_SURFACE_ID -u CMUX_PANEL_ID -u CMUX_TAB_ID -u CMUX_WORKSPACE_ID $cmux agent message "$surface" --from Sidak -- "Sidak: my PR #$n ($org/$repo) needs fixing. If $SIDAK_DIR/reviews/$repo-$n.md exists, it is my self-check's fix list for it: apply each fix that still applies, the blocking ones first. Then every unresolved review thread or change request, failing checks (gh pr checks $n) and conflicts with the base. Stay inside the PR's scope, commit in small signed commits, push, reply on each thread you addressed with one line and the sha, and re-request review from whoever asked for changes." >/dev/null || exit 1
+    env -u CMUX_SURFACE_ID -u CMUX_PANEL_ID -u CMUX_TAB_ID -u CMUX_WORKSPACE_ID $cmux agent message "$surface" --from Sidak -- "Sidak: my PR #$n ($org/$repo) needs fixing. If $SIDAK_DIR/reviews/$repo-$n.md exists, it is my self-check's fix list for it: apply each fix that still applies, the blocking ones first. Then every unresolved review thread or change request, failing checks (gh pr checks $n) and conflicts with the base. Stay inside the PR's scope, commit in small signed commits, push, reply on each thread you addressed with one line and the sha, and re-request review from whoever asked for changes. Last, write a summary for my board to $SIDAK_DIR/reviews/$repo-$n.fixed as exactly three lines, in plain words, no paths or shas: \"- Done: <what you changed, one sentence>\", \"- Left: <what you left alone and why, or nothing>\", \"- Failing: <what still fails, or nothing>\"." >/dev/null || exit 1
     # Onto the PR's state.json entry (its self-check), which the next self-check replaces. No entry: none made, as one would count as a run.
     python3 -c 'import json, sys, time; p, k, t = sys.argv[1:]; d = json.load(open(p))
 if k in d: d[k].update(sent=t, sentAt=int(time.time() * 1000)); json.dump(d, open(p, "w"))' $SIDAK_DIR/state.json "$org/$repo#$n" "$title"
