@@ -762,11 +762,18 @@
   .week-tile b { font-size: 24px; font-weight: 700; line-height: 28px; font-variant-numeric: tabular-nums; }
   .week-tile span { font-size: 13px; font-weight: 600; }
   .week-tile small { font-size: 12px; color: var(--lg-ink-muted); }
-  .week-report { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: rgba(127, 127, 127, 0.12); color: inherit; text-decoration: none; }
-  .week-report:hover { background: var(--lg-bg-interactive); }
-  .week-report .icon { flex: none; width: 20px; height: 20px; }
-  .week-report span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; }
-  .week-report small { font-size: 12px; font-weight: 400; color: var(--lg-ink-muted); }
+  /* Daily reports (panel.js reportCalendar): a month grid in a tile; a day with a report is a filled, tappable circle. */
+  .cal { padding: 10px 12px 12px; border-radius: 16px; background: rgba(127, 127, 127, 0.12); }
+  .cal-head { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+  .cal-head span { margin-right: auto; }
+  .cal-nav { width: 32px; height: 32px; border-radius: 16px; font-size: 18px; line-height: 1; color: var(--lg-ink-muted); }
+  .cal-nav:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; justify-items: center; }
+  .cal-dow { font-size: 11px; font-weight: 600; color: var(--lg-ink-muted); line-height: 24px; }
+  .cal-day { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 17px; font-size: 13px; color: var(--lg-ink-muted); font-variant-numeric: tabular-nums; text-decoration: none; }
+  .cal-day.has { background: var(--accent); color: #fff; font-weight: 600; }
+  .cal-day.has:hover { opacity: 0.85; }
+  .cal-day.today { outline: 1.5px solid var(--lg-ink); outline-offset: 1px; }
   .week-label { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--lg-ink-muted); }
   .week-waiting { margin-top: 0; }
   .week-pruned { display: flex; align-items: center; min-height: 36px; padding: 0 16px; font-size: 13px; color: var(--lg-ink-muted); }

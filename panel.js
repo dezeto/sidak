@@ -938,9 +938,9 @@ function renderHeader(space, index, syncStatus) {
   refresh.classList.remove('spinning');
 }
 
-// The daily report's link, which bin/daily-report writes to report-url as it publishes: the This week sheet opens it.
-let reportUrl = '';
-const showReport = (text) => (reportUrl = text.trim().startsWith('https://claude.ai/') ? text.trim() : '');
+// Each day's report link, {"YYYY-MM-DD": url}, which bin/daily-report adds to as it publishes: the This week sheet's calendar.
+let reportLinks = {};
+const showReports = (links) => (reportLinks = Object.fromEntries(Object.entries(links).filter(([, url]) => String(url).startsWith('https://claude.ai/'))));
 
 async function render() {
   const [{ sections = [], syncedAt, syncError }, spaces, state, stored, file] = await Promise.all([
@@ -950,7 +950,7 @@ async function render() {
     loadSettings(),
     loadConfig(),
     fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : [])).catch(() => []).then((log) => (autoLogEntries = log)),
-    fetch(chrome.runtime.getURL('report-url'), { cache: 'no-store' }).then((res) => (res.ok ? res.text() : '')).catch(() => '').then(showReport),
+    fetch(chrome.runtime.getURL('report-links.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : {})).catch(() => ({})).then(showReports),
   ]);
   config = { ...NO_CONFIG, ...file };
   save('config', config);
@@ -1142,12 +1142,31 @@ function autoLog() {
   if (pruned) list.append(el('span', { className: 'week-pruned', textContent: `Deleted ${pruned} merged local branch${pruned === 1 ? '' : 'es'}` }));
   return log.length || pruned ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length + pruned} this week` }), list] : [];
 }
-function reportLink() {
-  const link = el('a', { className: 'week-report', href: reportUrl, target: '_blank' });
-  const words = el('span', { textContent: 'Daily report' });
-  words.append(el('small', { textContent: 'Who did what on the PRs we reviewed, each weekday at 18:00' }));
-  link.append(icon('i-report'), words);
-  return link;
+// A month of daily reports: a day with one is a link to it, today is ringed; the arrows page through months.
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function reportCalendar() {
+  const box = el('div', { className: 'cal' });
+  const draw = (first) => {
+    const nav = (step, label) => el('button', { type: 'button', className: 'cal-nav', textContent: step < 0 ? '‹' : '›', ariaLabel: label, onclick: () => draw(new Date(first.getFullYear(), first.getMonth() + step, 1)) });
+    const head = el('div', { className: 'cal-head' });
+    head.append(el('span', { textContent: first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }), nav(-1, 'Previous month'), nav(1, 'Next month'));
+    const grid = el('div', { className: 'cal-grid' });
+    for (const day of ['M', 'T', 'W', 'T', 'F', 'S', 'S']) grid.append(el('span', { className: 'cal-dow', textContent: day }));
+    for (let i = (first.getDay() + 6) % 7; i > 0; i--) grid.append(el('span'));
+    const today = dayKey(new Date());
+    for (let d = new Date(first); d.getMonth() === first.getMonth(); d.setDate(d.getDate() + 1)) {
+      const key = dayKey(d), url = reportLinks[key];
+      const cell = url ? el('a', { href: url, target: '_blank', title: `Report for ${d.toDateString()}` }) : el('span', {});
+      cell.className = `cal-day${url ? ' has' : ''}${key === today ? ' today' : ''}`;
+      cell.textContent = d.getDate();
+      grid.append(cell);
+    }
+    box.replaceChildren(head, grid);
+  };
+  const latest = Object.keys(reportLinks).sort().at(-1);
+  const at = latest ? new Date(`${latest}T12:00`) : new Date();
+  draw(new Date(at.getFullYear(), at.getMonth(), 1));
+  return box;
 }
 
 function openWeek() {
@@ -1180,7 +1199,8 @@ function openWeek() {
   sheet.replaceChildren(
     el('div', { className: 'sheet-grab' }), el('p', { className: 'sheet-title', textContent: 'This week' }),
     el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }),
-    ...(reportUrl ? [reportLink()] : []), tiles,
+    tiles,
+    ...(Object.keys(reportLinks).length ? [el('p', { className: 'week-label', textContent: 'Daily reports' }), reportCalendar()] : []),
     ...(longest.length ? [el('p', { className: 'week-label', textContent: 'Waiting on you longest' }), waiting] : []),
     ...autoLog(),
   );

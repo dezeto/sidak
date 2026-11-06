@@ -1,7 +1,7 @@
 #!/bin/zsh
 # The day's review report: what happened on every PR Sidak reviewed or self-checked that day, and on my own PRs Auto worked on (who
 # pushed, replied, reviewed, resolved, merged), gathered from GitHub into reports/<day>.json, then written up by Claude as one private
-# Artifact, a new one each run (report-url holds the newest link; Sidak's This week sheet opens it).
+# Artifact, a new one each run (report-url holds the newest link, report-links.json each day's: Sidak's This week calendar).
 #   daily-report [<YYYY-MM-DD>]      pr-board report starts it in a background cmux tab, weekdays from settings.json reportHour (18)
 #   PROFILE=cwc ... / MODEL=opus ...
 # Interactive Claude in its own tab: a headless claude -p has no Artifact tool (neither profile's had). PROFILE defaults to cc, the
@@ -163,6 +163,17 @@ The page: load the artifact-design skill first and follow it. One HTML page titl
 Publish it with the Artifact tool as a new artifact (no url; do not read or update an earlier report). Then write its link to $url_file, replacing what is there, alone on one line, as the very last step: its time tells Sidak the report is out. Then stop; no summary in the terminal.
 EOF
 )
+# Each day's link into report-links.json (the board's calendar) once Claude writes report-url; the tab closing does not stop it, and
+# it gives up after two hours.
+started=$(mktemp)
+( trap '' HUP TERM
+  for i in {1..1440}; do [[ $url_file -nt $started ]] && break; sleep 5; done
+  [[ $url_file -nt $started ]] && python3 -c 'import json, os, sys
+path, day, url = sys.argv[1:]
+links = json.load(open(path)) if os.path.exists(path) else {}
+links[day] = url
+json.dump(links, open(path + ".tmp", "w"), indent=1, sort_keys=True); os.replace(path + ".tmp", path)' ${STATE:h}/report-links.json $day "$(head -1 $url_file)"
+  rm -f $started ) &!
 cd $out
 claude --dangerously-skip-permissions --model ${MODEL:-sonnet} --effort ${EFFORT:-high} "$prompt"
 echo; echo "daily report $day finished (exit $?)"
