@@ -231,12 +231,12 @@ function card(p, w, who) {
 
   if (w.today?.length) {
     const ol = h('ol', 'timeline');
-    for (const [at, by, did] of w.today) { const li = h('li'), t = h('time', null, at || ''), d = h('div'); d.append(h('b', null, by || ''), did || ''); li.append(t, d); ol.append(li); }
+    for (const [at, by, did] of w.today) { const li = h('li'), t = h('time', null, at || ''), d = h('div'); d.append(h('b', null, who(by || '')), did || ''); li.append(t, d); ol.append(li); }
     section('Today', ol);
   }
   if (w.open?.length) {
     const ul = h('ul', 'threads');
-    for (const [where, q, by] of w.open) { const li = h('li'); li.append(h('code', null, where || ''), h('span', null, q || ''), h('span', 'who', by ? `\u2192 ${by}` : '')); ul.append(li); }
+    for (const [where, q, by] of w.open) { const li = h('li'); li.append(h('code', null, where || ''), h('span', null, q || ''), h('span', 'who', by ? `\u2192 ${who(by)}` : '')); ul.append(li); }
     section('Still open', ul);
   }
   box.append(body);
