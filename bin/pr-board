@@ -497,12 +497,20 @@ def depth_of(pr):
     why = [name for name, rule in RISKY if any(rule.search(path) for path in paths)]
     if info["additions"] + info["deletions"] > 500: why.append(f'{info["additions"] + info["deletions"]} lines')
     return ("full" if why else "quick"), ", ".join(why)
+# Model Auto (settings.json model "auto"): each run its own model and effort. Opus, high, where a miss costs most: a Deep for risky code
+# (RISKY) and every fix, which writes code. Sonnet for the rest: medium for a Skim and for a second look at a PR already reviewed or
+# self-checked (crm#22148 had seven Deep self-checks on Opus in one day, one per push), high for a Deep that is only big.
+def pick(depth, why="", again=False):
+    if settings.get("model") != "auto": return settings.get("model", "opus"), settings.get("effort", "high")
+    if depth == "fix": return "opus", "high"
+    if depth == "quick" or again: return "sonnet", "medium"
+    return ("opus", "high") if any(name in why for name, _ in RISKY) else ("sonnet", "high")
 # One fix a tick: the PRs of a stack share the session that opened them, and two started on one tick both resumed it (three Claude
 # processes on one session). The next tick finds it open in its tab and queues the ask there (claude-review-open ccfix).
 picked = fixes[:1 if left is None else min(left, 1)]
 for pr, why in picked:
     repo, n = pr["repository"]["name"], pr["number"]
-    print(f'ccfix://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}\t{repo}#{n} Fix ({why})')
+    print(f'ccfix://{config["org"]}/{repo}/{n}/{"/".join(pick("fix"))}\t{repo}#{n} Fix ({why})')
     fixed.setdefault(key(pr), []).append(pr["headRefOid"])
     if "self-check" in why: fixed.setdefault(key(pr) + " handoff", []).append(pr["headRefOid"])
     note(pr, "fix", f"Fix ({why})", sha=pr["headRefOid"])
@@ -513,7 +521,8 @@ for pr in todo[:None if left is None else left - len(picked)]:
     repo, n = pr["repository"]["name"], pr["number"]
     depth, why = ("quick", "") if pr.get("asked") else depth_of(pr)
     if state.get(key(pr), {}).get("state") == "failed" and state[key(pr)].get("auto"): fixed[key(pr) + " retry"] = [state[key(pr)].get("at")]
-    print(f'ccreview://{config["org"]}/{repo}/{n}/{settings.get("model", "opus")}/{settings.get("effort", "high")}/{depth}\t{repo}#{n}{" Deep (" + why + ")" if why else ""}')
+    model, effort = pick(depth, why, state.get(key(pr), {}).get("state") == "reviewed")
+    print(f'ccreview://{config["org"]}/{repo}/{n}/{model}/{effort}/{depth}\t{repo}#{n}{" Deep (" + why + ")" if why else ""}')
     note(pr, "review", ("Deep" if depth == "full" else "Skim") + (" self-check" if pr in mine else " re-review" if pr.get("asked") else " review") + (f" ({why})" if why else ""))
 save_fixed()
 save_log()

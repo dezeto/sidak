@@ -1,4 +1,4 @@
-# Self-check for pr-board auto's flaky-CI classifier (checks) and change requests (asks): python3 bin/pr-board-test.py prints ok.
+# Self-check for pr-board auto's flaky-CI classifier (checks), change requests (asks) and model Auto (pick): python3 bin/pr-board-test.py prints ok.
 import re, subprocess
 src = open(__import__("os").path.join(__import__("os").path.dirname(__file__), "pr-board")).read()
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"]
@@ -27,4 +27,15 @@ log = [{"pr": "x/y#1", "kind": "fix", "at": iso("2026-11-06T11:00:00Z") * 1000}]
 assert not asks(mine)
 log = [{"pr": "x/y#1", "kind": "fix", "at": iso("2026-11-06T09:30:00Z") * 1000}]
 assert asks(mine)
+# pick: Opus only for a risky Deep and a fix; a second look and a Skim on Sonnet medium; a fixed model passes through.
+exec(src[src.index('RISKY = ['):src.index('def depth_of')])
+exec(src[src.index('def pick'):src.index('# One fix a tick')])
+settings = {"model": "auto"}
+assert pick("fix") == ("opus", "high")
+assert pick("full", "auth or security code, 4114 lines") == ("opus", "high")
+assert pick("full", "auth or security code, 4114 lines", again=True) == ("sonnet", "medium")
+assert pick("full", "967 lines") == ("sonnet", "high")
+assert pick("quick") == ("sonnet", "medium")
+settings = {"model": "opus", "effort": "medium"}
+assert pick("quick") == ("opus", "medium")
 print("ok")

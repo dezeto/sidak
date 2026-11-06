@@ -91,6 +91,10 @@ const rise = (rows) => rows.slice(0, 8).forEach((row, i) => play(row, RISE, { de
 let activeSpace = saved('space', null);
 // Model and effort for new reviews ride in the URL: ccreview://<pr>/<model>/<effort>/<depth>; depth is the card button.
 const picks = { model: saved('model', 'opus'), effort: saved('effort', 'high') };
+// Model Auto: each run its own model and effort, as pr-board auto picks them (pick), where a click knows only the button: a Skim on
+// Sonnet, a Deep or a Fix on Opus. The Effort row hides then.
+const AUTO_RUN = { quick: ['sonnet', 'medium'], full: ['opus', 'high'], fix: ['opus', 'high'] };
+const runPicks = (depth) => (picks.model === 'auto' ? AUTO_RUN[depth] ?? AUTO_RUN.full : [picks.model, picks.effort]).join('/');
 // The pickers sit in the settings card; the sliders button's tooltip names the current picks.
 // Settings: the footer's words raise a card over the bottom of the list, which blurs behind it (data-settings); Esc or a tap on
 // the list lowers it again. It rises 12 px from the footer as it fades in, and sinks back the same way.
@@ -126,21 +130,24 @@ document.addEventListener('click', (event) => {
   event.stopPropagation();
   toggleSettings(false);
 }, true);
+function showPicks() {
+  for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
+    for (const button of seg.children) button.setAttribute('aria-pressed', button.value === picks[seg.dataset.key]);
+  }
+  document.getElementById('effort-set').hidden = picks.model === 'auto';
+}
 for (const seg of document.querySelectorAll('#settings .seg[data-key]')) {
   const key = seg.dataset.key;
-  const show = () => {
-    for (const button of seg.children) button.setAttribute('aria-pressed', button.value === picks[key]);
-  };
   // settings.json carries the picks too: pr-board auto starts its reviews with them.
   seg.onclick = ({ target }) => {
     if (!target.value) return;
     picks[key] = target.value;
     save(key, picks[key]);
     saveSettings({ [key]: picks[key] });
-    show();
+    showPicks();
   };
-  show();
 }
+showPicks();
 const collapsed = new Set(saved('collapsed', []));
 
 // config.json (./install.sh writes it) holds everything personal: { org, login, repos, reviewable, rulesRepo, profiles, defaultProfile, extensionId }.
@@ -245,7 +252,7 @@ function renderFoot() {
   const profile = settings.profile || config.defaultProfile;
   // The settings chip: what a click runs with, profile · model · effort, in one capsule.
   footConfig.replaceChildren(...[
-    Object.assign(pick([profile, label('model'), label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
+    Object.assign(pick([profile, label('model'), picks.model !== 'auto' && label('effort')].filter(Boolean).join(' · '), 'Profile, model and effort for new reviews'), { className: 'pick run' }),
     !settings.auto?.on ? sign('i-auto', 'Auto review is off', false)
       : settings.autoCap ? sign('i-auto', `Auto review is on, ${today.auto} of its ${settings.autoCap} runs today used`, true)
       : sign('i-auto', `Auto review is on, no daily limit (${today.auto} today)${quietNow() ? '; quiet hours now, nothing starts' : ''}`, true),
@@ -260,6 +267,7 @@ function renderFoot() {
   });
 }
 function showSettings() {
+  showPicks();
   for (const button of pollSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.pollMinutes);
   for (const button of staleSeg.children) button.setAttribute('aria-pressed', Number(button.value) === settings.staleDays);
   if (document.activeElement !== capBox) capBox.value = settings.autoCap || '';
@@ -455,9 +463,9 @@ function prRow(pr) {
   const openInCmux = (depth) => (event) => {
     event.preventDefault();
     const button = event.currentTarget;
-    let url = `ccreview://${repoOf(pr)}/${pr.number}${depth ? `/${picks.model}/${picks.effort}/${depth}` : ''}`;
+    let url = `ccreview://${repoOf(pr)}/${pr.number}${depth ? `/${runPicks(depth)}/${depth}` : ''}`;
     // My own PRs: ccfix runs claude-fix on the branch, ccmerge squash-merges (the opener handles both schemes).
-    if (depth === 'fix') url = `ccfix://${repoOf(pr)}/${pr.number}/${picks.model}/${picks.effort}`;
+    if (depth === 'fix') url = `ccfix://${repoOf(pr)}/${pr.number}/${runPicks('fix')}`;
     if (depth === 'merge') {
       if (!confirm(`Squash-merge ${pr.repo} #${pr.number}?\n${pr.title}`)) return;
       url = `ccmerge://${repoOf(pr)}/${pr.number}`;
@@ -943,6 +951,9 @@ async function render() {
   save('config', config);
   showMe();
   if (!settingsWrites) settings = stored;
+  // The picks follow settings.json, which pr-board reads: one made on the phone or in the other panel shows here, and is what a
+  // later settings write (it sends them all) keeps.
+  for (const key of ['model', 'effort']) if (settings[key] && settings[key] !== picks[key]) save(key, (picks[key] = settings[key]));
   save('settings', settings);
   countToday(state);
   lastState = state;
