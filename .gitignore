@@ -15,3 +15,5 @@ tabs-idle.json
 autolog.json
 brief-day
 .auto.lock
+reports/
+report-url

@@ -391,11 +391,13 @@ final class App: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelega
       // The morning brief (pr-board brief): one line on the first tick after 9:00 on a weekday; a click opens the board.
       let brief = self.zsh("INBOX=\(toReview) bin/pr-board brief").0.trimmingCharacters(in: .whitespacesAndNewlines)
       if !brief.isEmpty {
+        // "<line>\t<link>" is the evening's daily report (pr-board brief): a click opens it.
+        let parts = brief.components(separatedBy: "\t")
         let content = UNMutableNotificationContent()
-        content.title = "Good morning"
-        content.body = brief
-        content.userInfo = ["board": true]
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "brief", content: content, trigger: nil)) { err in
+        content.title = parts.count > 1 ? "Daily report" : "Good morning"
+        content.body = parts[0]
+        content.userInfo = parts.count > 1 ? ["url": parts[1]] : ["board": true]
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: parts.count > 1 ? "report" : "brief", content: content, trigger: nil)) { err in
           NSLog("brief %@: %@", brief, err?.localizedDescription ?? "ok")
         }
       }

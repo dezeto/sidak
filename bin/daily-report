@@ -1,0 +1,135 @@
+#!/bin/zsh
+# The day's review report: what happened on every PR Sidak reviewed or self-checked that day, and on my own PRs Auto worked on (who
+# pushed, replied, reviewed, resolved, merged), gathered from GitHub into reports/<day>.json, then written up by Claude as one private
+# Artifact, published to the same link each day (report-url; earlier days stay in its version history).
+#   daily-report [<YYYY-MM-DD>]      pr-board report starts it in a background cmux tab, weekdays from settings.json reportHour (18)
+#   PROFILE=cwc ... / MODEL=opus ...
+# Interactive Claude in its own tab: a headless claude -p has no Artifact tool (neither profile's had). PROFILE defaults to cc, the
+# account whose sessions publish Artifacts.
+set -u
+# The whole script in one block, read before any of it runs (as claude-fix).
+{
+SIDAK_DIR=${SIDAK_DIR:-${0:A:h:h}}
+STATE=${SIDAK_STATE:-$SIDAK_DIR/state.json}
+cfg() { jq -r "$@" $SIDAK_DIR/config.json; }
+PROFILE=${PROFILE:-cc}
+profile_dir=$(cfg --arg p $PROFILE '.profiles[$p] // ""')
+[[ -n $profile_dir ]] && export CLAUDE_CONFIG_DIR=${profile_dir/#\~/$HOME}
+day=${1:-$(date +%F)}
+out=${STATE:h}/reports
+url_file=${STATE:h}/report-url
+mkdir -p $out
+echo "== daily report $day (PROFILE=$PROFILE MODEL=${MODEL:-sonnet}) =="
+python3 - $STATE $SIDAK_DIR/config.json $day $out/$day.json <<'PY' || { echo "could not gather the day"; exec zsh; }
+import datetime, json, os, re, subprocess, sys
+state_path, config_path, day, out = sys.argv[1:]
+state, config = json.load(open(state_path)), json.load(open(config_path))
+log_path = os.path.join(os.path.dirname(state_path), "autolog.json")
+log = json.load(open(log_path)) if os.path.exists(log_path) else []
+start = datetime.datetime.fromisoformat(day).timestamp()  # local midnight
+end = start + 86400
+def today(ms): return start * 1000 <= (ms or 0) < end * 1000
+def iso(text): return datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+def on_day(text): return bool(text) and start <= iso(text) < end
+def hm(text): return datetime.datetime.fromtimestamp(iso(text)).strftime("%H:%M")
+def hm_ms(ms): return datetime.datetime.fromtimestamp(ms / 1000).strftime("%H:%M")
+def cut(text, n): text = re.sub(r"\s+", " ", text or "").strip(); return text if len(text) <= n else text[:n] + "…"
+# The day's PRs: a review run of Sidak's that day (claude-review's history), or something Auto did on it (autolog.json).
+runs = {}
+for key, entry in state.items():
+    for run in entry.get("history") or ([entry] if entry.get("state") == "reviewed" else []):
+        if today(run.get("at")): runs.setdefault(key, []).append(run)
+acts = {}
+for e in log:
+    if today(e["at"]): acts.setdefault(e["pr"], []).append(e)
+keys = sorted(set(runs) | set(acts))
+FIELDS = """number title url author { login } state isDraft merged mergedAt mergedBy { login } reviewDecision additions deletions baseRefName
+  commits(last: 40) { nodes { commit { abbreviatedOid messageHeadline committedDate author { user { login } name } statusCheckRollup { state } } } }
+  reviews(last: 40) { nodes { author { login } state submittedAt body } }
+  reviewThreads(first: 80) { nodes { isResolved resolvedBy { login } path line comments(last: 15) { nodes { author { login } body createdAt } } } }
+  comments(last: 40) { nodes { author { login } body createdAt } }
+  timelineItems(last: 60, itemTypes: [MERGED_EVENT, CLOSED_EVENT, REOPENED_EVENT, READY_FOR_REVIEW_EVENT, CONVERT_TO_DRAFT_EVENT,
+    REVIEW_REQUESTED_EVENT, HEAD_REF_FORCE_PUSHED_EVENT, REVIEW_DISMISSED_EVENT]) { nodes { __typename
+    ... on MergedEvent { createdAt actor { login } } ... on ClosedEvent { createdAt actor { login } } ... on ReopenedEvent { createdAt actor { login } }
+    ... on ReadyForReviewEvent { createdAt actor { login } } ... on ConvertToDraftEvent { createdAt actor { login } }
+    ... on ReviewRequestedEvent { createdAt actor { login } requestedReviewer { ... on User { login } ... on Team { name } } }
+    ... on HeadRefForcePushedEvent { createdAt actor { login } } ... on ReviewDismissedEvent { createdAt actor { login } } } }"""
+prs = {}
+for i in range(0, len(keys), 8):  # 8 a query keeps each response well under GitHub's limits
+    batch = keys[i:i + 8]
+    parts = []
+    for j, key in enumerate(batch):
+        nwo, n = key.split("#"); owner, name = nwo.split("/")
+        parts.append(f'p{j}: repository(owner: "{owner}", name: "{name}") {{ pullRequest(number: {n}) {{ {FIELDS} }} }}')
+    res = subprocess.run(["gh", "api", "graphql", "-f", "query={ " + " ".join(parts) + " }"], capture_output=True, text=True)
+    data = json.loads(res.stdout or "{}").get("data") or {}
+    for j, key in enumerate(batch):
+        pr = (data.get(f"p{j}") or {}).get("pullRequest")
+        if pr: prs[key] = pr
+me = config["login"]
+who = lambda node: ((node or {}).get("login")) or "someone"
+result = []
+for key in keys:
+    pr = prs.get(key)
+    if not pr: continue
+    entry = state.get(key, {})
+    report = entry.get("report") or ""
+    fixes = [cut(re.sub(r"\*\*", "", line), 220) for line in open(report).read().splitlines() if re.match(r"^\d+\. \*\*", line)][:15] if report and os.path.exists(report) else []
+    head = pr["commits"]["nodes"][-1]["commit"] if pr["commits"]["nodes"] else {}
+    happened = []
+    for node in pr["commits"]["nodes"]:
+        c = node["commit"]
+        if on_day(c["committedDate"]):
+            happened.append({"at": hm(c["committedDate"]), "who": (c["author"].get("user") or {}).get("login") or c["author"].get("name"), "did": "pushed commit", "what": f'{c["abbreviatedOid"]} {cut(c["messageHeadline"], 160)}'})
+    for r in pr["reviews"]["nodes"]:
+        if on_day(r["submittedAt"]):
+            happened.append({"at": hm(r["submittedAt"]), "who": who(r["author"]), "did": {"APPROVED": "approved", "CHANGES_REQUESTED": "requested changes", "COMMENTED": "reviewed with comments", "DISMISSED": "review dismissed"}.get(r["state"], r["state"].lower()), "what": cut(r["body"], 700)})
+    open_threads = []
+    for t in pr["reviewThreads"]["nodes"]:
+        comments = t["comments"]["nodes"]
+        for c in comments:
+            if on_day(c["createdAt"]):
+                happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on a thread" if c is not comments[0] else "opened a thread", "where": f'{t["path"]}{":" + str(t["line"]) if t.get("line") else ""}', "what": cut(c["body"], 500), "resolved": t["isResolved"]})
+        if not t["isResolved"] and comments:
+            open_threads.append({"where": f'{t["path"]}{":" + str(t["line"]) if t.get("line") else ""}', "last_by": who(comments[-1]["author"]), "last": cut(comments[-1]["body"], 240), "opened_by": who(comments[0]["author"])})
+        elif t["isResolved"] and t.get("resolvedBy") and any(on_day(c["createdAt"]) for c in comments):
+            happened.append({"at": "", "who": who(t["resolvedBy"]), "did": "resolved a thread", "where": t["path"]})
+    for c in pr["comments"]["nodes"]:
+        if on_day(c["createdAt"]):
+            happened.append({"at": hm(c["createdAt"]), "who": who(c["author"]), "did": "commented on the PR", "what": cut(c["body"], 500)})
+    for ev in pr["timelineItems"]["nodes"]:
+        if on_day(ev.get("createdAt")):
+            what = ev["__typename"].removesuffix("Event")
+            reviewer = ev.get("requestedReviewer") or {}
+            happened.append({"at": hm(ev["createdAt"]), "who": who(ev.get("actor")), "did": re.sub(r"(?<!^)([A-Z])", r" \1", what).lower(), **({"what": reviewer.get("login") or reviewer.get("name")} if reviewer else {})})
+    happened.sort(key=lambda h: h["at"] or "99")
+    result.append({
+        "pr": key, "title": pr["title"], "url": pr["url"], "author": who(pr["author"]), "mine": who(pr["author"]) == me,
+        "status": "merged" if pr["merged"] else pr["state"].lower() + (" draft" if pr["isDraft"] else ""),
+        "merged_by": who(pr["mergedBy"]) if pr["merged"] else None, "review_decision": pr["reviewDecision"],
+        "checks": (head.get("statusCheckRollup") or {}).get("state"), "size": f'+{pr["additions"]} -{pr["deletions"]}', "base": pr["baseRefName"],
+        "our_runs": [{"at": hm_ms(r["at"]), "depth": "Deep" if r.get("depth") == "full" else "Skim", "kind": "self-check" if r.get("self") or report else "review",
+                      "verdict": r.get("verdict"), "sha": r.get("sha")} for r in sorted(runs.get(key, []), key=lambda r: r["at"])],
+        "our_tldr": entry.get("tldr"), "self_check_fixes": fixes,
+        "auto_did": [{"at": hm_ms(e["at"]), "what": e["text"], **({"summary": e["summary"]} if e.get("summary") else {}), **({"outcome": e["done"]} if e.get("done") else {})} for e in acts.get(key, [])],
+        "happened_today": happened, "open_threads": open_threads,
+    })
+json.dump({"day": day, "me": me, "prs": result}, open(out, "w"), indent=1)
+print(f"{len(result)} PRs, {sum(len(p['happened_today']) for p in result)} things people did")
+PY
+prompt=$(cat <<EOF
+Write my daily review report for $day and publish it. The data is in $out/$day.json: every PR Sidak reviewed or self-checked that day and my own PRs Auto worked on, with what each person did on GitHub that day (happened_today: commits, reviews, thread comments, PR comments, merges and other events, oldest first), the threads still open, Sidak's own runs (our_runs, our_tldr, self_check_fixes) and Auto's actions (auto_did, with fix summaries). I am $(cfg .login); Sidak posts my reviews and replies as me.
+
+Make it detailed and specific: names, files, what was asked and what was done. Use only the data; never guess, and say plainly when nothing happened after our review.
+- Top: the date, a short overview paragraph, the counts (PRs, our reviews by verdict, self-checks, fixes, merged), then three lists: Needs me (each PR whose next move is mine, and why), Waiting on others (who, and for what), Merged today.
+- Then one section per PR, others' PRs first, then mine: the title linked to the PR, repo#number, author, size, status now (draft, open or merged, review decision, checks). What we found: our verdicts and the TL;DR's findings (on my own PRs, the self-check's fix list). What happened: a time-ordered account in plain sentences of who did what, such as which commits the author pushed (their subjects), who replied on which file and what they agreed to change or pushed back on, who resolved what, who approved or requested changes and why, merges, and Auto's own actions (fixes with their summaries). Quote briefly where the exact words matter. Still open: the unresolved threads and who has to answer. Next: the one next step and whose it is.
+
+The page: load the artifact-design skill first and follow it. One HTML page titled "Sidak daily report", phone first (I read it on my phone), light and dark, the overview open and one collapsible section per PR, with a jump list of the PRs near the top. Save it as $out/$day.html.
+Publish it with the Artifact tool. If $url_file exists, it holds the report's link: read that artifact first (action read), then publish your file to that url, so the link stays the same and earlier days stay in its versions. Otherwise publish a new one. Either way, write the link to $url_file at the very end, alone on one line: its time tells Sidak the report is out. Then stop; no summary in the terminal.
+EOF
+)
+cd $out
+claude --dangerously-skip-permissions --model ${MODEL:-sonnet} --effort ${EFFORT:-high} "$prompt"
+echo; echo "daily report $day finished (exit $?)"
+exec zsh
+}; exit
