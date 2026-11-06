@@ -43,7 +43,8 @@ acts = {}
 for e in log:
     if today(e["at"]): acts.setdefault(e["pr"], []).append(e)
 keys = sorted(set(runs) | set(acts))
-FIELDS = """number title url author { login } state isDraft merged mergedAt mergedBy { login } reviewDecision additions deletions baseRefName
+FIELDS = """number title url author { login } state isDraft merged mergedAt mergedBy { login } reviewDecision additions deletions baseRefName body
+  files(first: 40) { nodes { path additions deletions } }
   commits(last: 40) { nodes { commit { abbreviatedOid messageHeadline committedDate author { user { login } name } statusCheckRollup { state } } } }
   reviews(last: 40) { nodes { author { login } state submittedAt body } }
   reviewThreads(first: 80) { nodes { isResolved resolvedBy { login } path line comments(last: 15) { nodes { author { login } body createdAt } } } }
@@ -66,6 +67,16 @@ for i in range(0, len(keys), 8):  # 8 a query keeps each response well under Git
     for j, key in enumerate(batch):
         pr = (data.get(f"p{j}") or {}).get("pullRequest")
         if pr: prs[key] = pr
+# What the PR is, from its review's "## Overview" (claude-review writes one into the handoff or fix list while it has the whole PR in
+# context): the text before its Mermaid block, and the block.
+def overview(name, n, entry):
+    for path in (entry.get("report"), os.path.join(os.path.dirname(state_path), "handoffs", f"{name}-{n}.md")):
+        if not path or not os.path.exists(path): continue
+        m = re.search(r"^## Overview[^\n]*\n(.*?)(?=^#|\Z)", open(path).read(), re.M | re.S)
+        if not m: continue
+        body, d = m.group(1), re.search(r"```mermaid\n(.*?)```", m.group(1), re.S)
+        return cut(body[:d.start()] if d else body.split("\n\n")[0], 900), d.group(1).strip() if d else None
+    return None, None
 me = config["login"]
 who = lambda node: ((node or {}).get("login")) or "someone"
 result = []
@@ -74,6 +85,7 @@ for key in keys:
     if not pr: continue
     entry = state.get(key, {})
     report = entry.get("report") or ""
+    about, diagram = overview(key.split("/")[1].split("#")[0], pr["number"], entry)
     fixes = [cut(re.sub(r"\*\*", "", line), 220) for line in open(report).read().splitlines() if re.match(r"^\d+\. \*\*", line)][:15] if report and os.path.exists(report) else []
     head = pr["commits"]["nodes"][-1]["commit"] if pr["commits"]["nodes"] else {}
     happened = []
@@ -112,19 +124,29 @@ for key in keys:
                       "verdict": r.get("verdict"), "sha": r.get("sha")} for r in sorted(runs.get(key, []), key=lambda r: r["at"])],
         "our_tldr": entry.get("tldr"), "self_check_fixes": fixes,
         "auto_did": [{"at": hm_ms(e["at"]), "what": e["text"], **({"summary": e["summary"]} if e.get("summary") else {}), **({"outcome": e["done"]} if e.get("done") else {})} for e in acts.get(key, [])],
+        "overview": about, "diagram": diagram,
+        # No Overview from a review yet: what the PR says about itself, and what it touches.
+        **({} if about else {"pr_body": cut(re.sub(r"<!--.*?-->", "", pr["body"] or "", flags=re.S), 1200),
+                            "files": [f'{f["path"]} +{f["additions"]} -{f["deletions"]}' for f in pr["files"]["nodes"]][:25]}),
         "happened_today": happened, "open_threads": open_threads,
     })
 json.dump({"day": day, "me": me, "prs": result}, open(out, "w"), indent=1)
 print(f"{len(result)} PRs, {sum(len(p['happened_today']) for p in result)} things people did")
 PY
 prompt=$(cat <<EOF
-Write my daily review report for $day and publish it. The data is in $out/$day.json: every PR Sidak reviewed or self-checked that day and my own PRs Auto worked on, with what each person did on GitHub that day (happened_today: commits, reviews, thread comments, PR comments, merges and other events, oldest first), the threads still open, Sidak's own runs (our_runs, our_tldr, self_check_fixes) and Auto's actions (auto_did, with fix summaries). I am $(cfg .login); Sidak posts my reviews and replies as me.
+Write my daily review report for $day and publish it. The data is in $out/$day.json: every PR Sidak reviewed or self-checked that day and my own PRs Auto worked on. For each: overview and diagram (what the PR is, written by Sidak's reviewer while it had the whole PR in context; a Mermaid flowchart), or, when there is none yet, pr_body and files; what each person did on GitHub that day (happened_today, oldest first); the threads still open; Sidak's own runs (our_runs, our_tldr, self_check_fixes); Auto's actions (auto_did, with fix summaries). I am $(cfg .login), "you" in the report; Sidak and Auto post as me.
 
-Make it detailed and specific: names, files, what was asked and what was done. Use only the data; never guess, and say plainly when nothing happened after our review.
-- Top: the date, a short overview paragraph, the counts (PRs, our reviews by verdict, self-checks, fixes, merged), then three lists: Needs me (each PR whose next move is mine, and why), Waiting on others (who, and for what), Merged today.
-- Then one section per PR, others' PRs first, then mine: the title linked to the PR, repo#number, author, size, status now (draft, open or merged, review decision, checks). What we found: our verdicts and the TL;DR's findings (on my own PRs, the self-check's fix list). What happened: a time-ordered account in plain sentences of who did what, such as which commits the author pushed (their subjects), who replied on which file and what they agreed to change or pushed back on, who resolved what, who approved or requested changes and why, merges, and Auto's own actions (fixes with their summaries). Quote briefly where the exact words matter. Still open: the unresolved threads and who has to answer. Next: the one next step and whose it is.
+I read it on my phone between other things, so it must scan in seconds: short lines, not paragraphs. Use only the data; never guess; when nothing happened after our review, say so in a few words.
+- Writing: plain words, one fact per line, at most two lines of text in a row anywhere. No shas, no long quotes: quote only when the exact words matter, at most 15 words, muted. People by their GitHub login.
+- Top: the date, three short sentences of overview, count tiles (PRs, our reviews by verdict, self-checks, fixes, merged), then three lists of one-line rows, each the PR number and short title with one muted line of why (12 words at most): Needs me, Waiting on others (who, for what), Merged today (who merged, when).
+- Then one collapsible card per PR, others' PRs first, then mine. Closed, the card shows the number, a short title, the author, status chips (draft, open or merged; approved or changes requested; checks) and its Next line, so the closed list alone tells me what to do. Open, in this order:
+  1. What it is: the overview as two to four short sentences, then its diagram drawn. With no overview, write two sentences from pr_body and files, and draw a small diagram only when they show the pieces clearly. Mermaid from https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.6.0/mermaid.min.js, rendered with a theme that follows light and dark, small, scrolling sideways inside its box rather than the page; a diagram that fails to render shows nothing, not an error.
+  2. Our review: the verdict chips, then at most three findings, one line each (on my own PRs, the self-check's Blocking and Should fix items).
+  3. Today: a timeline, one row per event as "time · who · what", at most 15 words each; join a person's events in a row ("pushed 3 commits: x, y, z"); Auto's fixes with their summary in one line.
+  4. Still open: one row per unresolved thread, "file: the question in a few words, who must answer".
+  5. Next: one highlighted line, the next step and whose it is.
 
-The page: load the artifact-design skill first and follow it. One HTML page titled "Sidak daily report", phone first (I read it on my phone), light and dark, the overview open and one collapsible section per PR, with a jump list of the PRs near the top. Save it as $out/$day.html.
+The page: load the artifact-design skill first and follow it. One HTML page titled "Sidak daily report", phone first, light and dark, with the PR numbers as a jump row near the top. Save it as $out/$day.html.
 Publish it with the Artifact tool. If $url_file exists, it holds the report's link: read that artifact first (action read), then publish your file to that url, so the link stays the same and earlier days stay in its versions. Otherwise publish a new one. Either way, write the link to $url_file at the very end, alone on one line: its time tells Sidak the report is out. Then stop; no summary in the terminal.
 EOF
 )

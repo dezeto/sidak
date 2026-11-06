@@ -1,4 +1,4 @@
-# Self-check for pr-board auto's flaky-CI classifier (checks), change requests (asks) and model Auto (pick): python3 bin/pr-board-test.py prints ok.
+# Self-check for pr-board auto's flaky-CI classifier (checks), change requests (asks), model Auto (pick) and daily-report's overview: python3 bin/pr-board-test.py prints ok.
 import re, subprocess
 src = open(__import__("os").path.join(__import__("os").path.dirname(__file__), "pr-board")).read()
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"]
@@ -38,4 +38,15 @@ assert pick("full", "967 lines") == ("sonnet", "high")
 assert pick("quick") == ("sonnet", "medium")
 settings = {"model": "opus", "effort": "medium"}
 assert pick("quick") == ("opus", "medium")
+# daily-report's overview: the review's "## Overview" text before its Mermaid block, and the block; none without the section.
+import os, tempfile
+report_src = open(os.path.join(os.path.dirname(__file__), "daily-report")).read()
+def cut(text, n): text = re.sub(r"\s+", " ", text or "").strip(); return text if len(text) <= n else text[:n] + "…"
+state_path = os.path.join(tempfile.mkdtemp(), "state.json")
+exec(report_src[report_src.index("def overview"):report_src.index('me = config["login"]')])
+fix_list = os.path.join(os.path.dirname(state_path), "fix.md")
+open(fix_list, "w").write("## TL;DR\n- What: x\n\n## Overview\nAdds a job.\nIt retries.\n\n```mermaid\nflowchart LR\n  A --> B\n```\nSha abc\n\n## Fixes\n1. y\n")
+assert overview("y", 1, {"report": fix_list}) == ("Adds a job. It retries.", "flowchart LR\n  A --> B")
+open(fix_list, "w").write("## TL;DR\n- What: x\n\n## Fixes\n1. y\n")
+assert overview("y", 1, {"report": fix_list}) == (None, None)
 print("ok")
