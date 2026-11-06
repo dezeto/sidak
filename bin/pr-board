@@ -314,7 +314,8 @@ mine = [pr for pr in own_prs if pr.get("reviewDecision") != "APPROVED" and eligi
 # Auto-fix: claude-fix (fixes, pushes, replies on the threads, re-requests review) on my own ready PR, in a background cmux tab, when
 # its checks fail, it conflicts with its base, or a change request waits on me: an unresolved thread whose last comment is someone
 # else's, or a request for changes after my last push, quiet for 15 minutes (the reviewer is done for now). Once per head commit, kept in
-# autofix.json: a fix that pushes nothing is not run again, and one that pushes gets one more look at the new head.
+# autofix.json: a fix that pushes nothing is not run again, and one that pushes gets one more look at the new head. A change request
+# counts only when it came after the PR's last fix: a thread that fix left open on purpose (its summary says why) asks nothing new.
 # ponytail: at most 3 auto-fixes per PR ever, so a fix that keeps failing CI stops; delete its autofix.json key to allow more.
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"] if pr["commits"]["nodes"] else {}
 def asks(pr):
@@ -322,6 +323,8 @@ def asks(pr):
     lasts = [thread["comments"]["nodes"][-1] for thread in pr["reviewThreads"]["nodes"] if not thread["isResolved"] and thread["comments"]["nodes"]]
     marks = [iso(c["createdAt"]) for c in lasts if (c["author"] or {}).get("login") != me]
     marks += [iso(r["submittedAt"]) for r in pr["latestReviews"]["nodes"] if r["state"] == "CHANGES_REQUESTED" and r["submittedAt"] and iso(r["submittedAt"]) > pushed]
+    last_fix = max((e["at"] / 1000 for e in log if e["pr"] == key(pr) and e["kind"] == "fix"), default=0)
+    marks = [mark for mark in marks if mark > last_fix]
     return bool(marks) and now - max(marks) >= 900
 # Failing checks, once every check is done: "flaky" (with the Actions run ids to rerun) when each failed job is an infrastructure fault
 # (a lost or killed runner, a timeout, a full disk, a job that never started), else "failing"; None while green or still running.
@@ -531,7 +534,8 @@ PY
 }
 
 # Finished review and fix tabs (cmux workspaces "review <repo>#<n>" / "fix <repo>#<n>" whose state.json entry is not running) close
-# 10 minutes after a tick first sees them idle, kept in tabs-idle.json; the tab I have selected, or pinned, stays. Every tick, Auto on or off.
+# 10 minutes after a tick first sees them idle, kept in tabs-idle.json; the tab I have selected, or pinned, stays, and so does a fix tab
+# whose Claude is still open (claude-fix settles on Claude's summary, then leaves the session to me). Every tick, Auto on or off.
 tidy() {
   CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password 2>/dev/null) \
     python3 - $STATE $SIDAK_DIR/tabs-idle.json $ORG <<'PY'
@@ -546,6 +550,7 @@ idle, now = {}, time.time()
 for ws in json.loads(out.stdout)["workspaces"]:
     title = re.fullmatch(r"(?:review|fix) (\S+)#(\d+)", ws.get("custom_title") or "")
     if not title or ws.get("selected") or ws.get("pinned") or state.get(f"{org}/{title[1]}#{title[2]}", {}).get("state") == "running": continue
+    if subprocess.run(["pgrep", "-f", f"bin/claude-fix {title[1]} {title[2]}$"], capture_output=True).returncode == 0: continue
     idle[ws["ref"]] = seen.get(ws["ref"], now)
     if now - idle[ws["ref"]] >= 600 and subprocess.run([cmux, "close-workspace", "--workspace", ws["ref"], "--force"], capture_output=True).returncode == 0:
         del idle[ws["ref"]]
@@ -639,7 +644,9 @@ status() {
 case $cmd in
   board) board ;;
   learn) learn ;;
-  auto) tidy; prune; auto ;;
+  # One tick at a time, each waiting for the one before (the lock goes with this process): Sidak ticks on its timer and again when
+  # a run settles, and two at once both started the same fix (crm#22146 twice, 5 s apart).
+  auto) zmodload zsh/system; : >> ${STATE:h}/.auto.lock; zsystem flock ${STATE:h}/.auto.lock; tidy; prune; auto ;;
   quick|review) start ;;
   status) status ;;
   brief) brief ;;

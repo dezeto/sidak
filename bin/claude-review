@@ -122,7 +122,8 @@ close_tab() {
   until handed_off; do sleep 15; done; mark reviewed; sleep 10; git -C $CRM worktree remove --force "$wt" 2>/dev/null; close_tab ) &
 watcher=$!
 [[ -d $wt ]] && git -C $CRM worktree remove --force "$wt"
-if ! { git -C $CRM fetch origin "pull/$n/head" && git -C $CRM worktree add --detach "$wt" FETCH_HEAD; }; then
+# Into the PR's own ref, not FETCH_HEAD: runs started on the same tick fetch at once and overwrote each other's (crm#22141 failed so).
+if ! { git -C $CRM fetch origin "+pull/$n/head:refs/sidak/$n" && git -C $CRM worktree add --detach "$wt" refs/sidak/$n; }; then
   mark failed; finish 1
 fi
 # Sweep what earlier tabs left behind: a review worktree whose PR is not running now is stale.

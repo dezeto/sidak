@@ -39,13 +39,31 @@ else: data[key] = {"state": state, "at": int(time.time() * 1000), "model": model
 json.dump(data, open(path, "w"))
 PY
 }
-finish() { echo; echo "fix $repo#$n finished (exit $1)"; mark clear; exec zsh; }
-trap 'mark clear; exit 129' HUP TERM
+# The summary for the board (the card's Fixed), written by Claude as its last step.
+NOTE=$(mktemp)
+# Once, on Claude's summary or the tab's end, whichever comes first (mkdir is the once): the card leaves Running (mark clear) and the
+# summary goes onto the fix's autolog.json entry (pr-board auto's, made as it started this), else a new one marked manual (a Fix from the board).
+settle() {
+  mkdir $NOTE.once 2>/dev/null || return
+  [[ -s $NOTE ]] && python3 - ${STATE:h}/autolog.json "$REPO#$n" $started $head $NOTE <<'PY'
+import json, os, sys
+path, key, started, head, note = sys.argv[1:]
+text = open(note).read().strip()
+log = json.load(open(path)) if os.path.exists(path) else []
+started = int(started)
+entry = next((e for e in reversed(log) if e["pr"] == key and e["kind"] == "fix" and "summary" not in e and started - 300000 <= e["at"] <= started + 60000), None)
+if entry is None: log.append(entry := {"at": started, "kind": "fix", "pr": key, "text": "Fix", "sha": head, "manual": True})
+entry["summary"] = text
+open(path + ".tmp", "w").write(json.dumps(log)); os.replace(path + ".tmp", path)
+PY
+  rm -f $NOTE; mark clear
+}
+finish() { echo; echo "fix $repo#$n finished (exit $1)"; settle; exec zsh; }
+# Ignored, not reset, once in: the closing tab sends a second hangup, which would kill settle mid-write (as in claude-review).
+trap 'trap "" HUP TERM; settle; exit 129' HUP TERM
 read branch head <<< "$(gh pr view "$n" -R "$REPO" --json headRefName,headRefOid --jq '"\(.headRefName) \(.headRefOid)"')"
 [[ -n $branch ]] || { echo "cannot read PR $n"; exec zsh; }
 started=$(( $(date +%s) * 1000 ))
-# The summary for the board (the card's Fixed), written by Claude, stored into Sidak's autolog.json once it exits (store_note).
-NOTE=$(mktemp)
 echo "== fix $repo#$n on $branch (PROFILE=$PROFILE MODEL=${MODEL:-opus} EFFORT=${EFFORT:-high}${RESUME:+ RESUME=$RESUME}) =="
 mark running
 # Work where the branch already is (never a second checkout of the same branch); otherwise a worktree tracking origin.
@@ -81,22 +99,11 @@ Finish with a short summary in this terminal: what changed per point, what you l
 Last, write the same summary to $NOTE as exactly three lines, in plain words, no paths or shas: "- Done: <what you changed, one sentence>", "- Left: <what you left alone and why, or nothing>", "- Failing: <what still fails, or nothing>".
 EOF
 )
+# Claude stays open after its summary, for me to carry on in, so the card settles on the summary, not on the tab closing. Deaf to the
+# hangup, so a closing tab never cuts its settle short; gone once settled either way, or with this script.
+( trap '' HUP TERM; until [[ -d $NOTE.once ]] || ! kill -0 $$ 2>/dev/null; do [[ -s $NOTE ]] && { sleep 3; settle; }; sleep 5; done ) &!
 claude $resume --dangerously-skip-permissions --model ${MODEL:-opus} --effort ${EFFORT:-high} --append-system-prompt-file "$sys" "$prompt"
 rc=$?
-# Onto the fix's autolog.json entry (pr-board auto's, made as it started this), else a new one marked manual (a Fix from the board).
-python3 - ${STATE:h}/autolog.json "$REPO#$n" $started $head $NOTE <<'PY'
-import json, os, sys
-path, key, started, head, note = sys.argv[1:]
-text = open(note).read().strip()
-if not text: sys.exit()
-log = json.load(open(path)) if os.path.exists(path) else []
-started = int(started)
-entry = next((e for e in reversed(log) if e["pr"] == key and e["kind"] == "fix" and "summary" not in e and started - 300000 <= e["at"] <= started + 60000), None)
-if entry is None: log.append(entry := {"at": started, "kind": "fix", "pr": key, "text": "Fix", "sha": head, "manual": True})
-entry["summary"] = text
-open(path + ".tmp", "w").write(json.dumps(log)); os.replace(path + ".tmp", path)
-PY
-rm -f $NOTE
 cd $CRM
 finish $rc
 }; exit

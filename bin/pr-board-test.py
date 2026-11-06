@@ -1,4 +1,4 @@
-# Self-check for pr-board auto's flaky-CI classifier (checks): python3 bin/pr-board-test.py prints ok.
+# Self-check for pr-board auto's flaky-CI classifier (checks) and change requests (asks): python3 bin/pr-board-test.py prints ok.
 import re, subprocess
 src = open(__import__("os").path.join(__import__("os").path.dirname(__file__), "pr-board")).read()
 def last_commit(pr): return pr["commits"]["nodes"][0]["commit"]
@@ -12,4 +12,19 @@ assert checks(pr(dict(timeout, status="IN_PROGRESS"), gate)) == (None, set())
 assert checks(pr({"state": "FAILURE"}, timeout)) == ("failing", set())
 assert checks(pr(timeout, state="SUCCESS")) == (None, set())
 assert checks(pr(dict(timeout, conclusion="STARTUP_FAILURE", detailsUrl="https://ci.example/x"))) == ("failing", set())
+# asks: a thread left open is a change request until a fix has run after its last comment.
+import datetime
+iso = lambda text: datetime.datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp()
+key = lambda pr: "x/y#1"
+exec(src[src.index('def asks'):src.index('# Failing checks')])
+now = iso("2026-11-06T12:00:00Z")
+thread = {"isResolved": False, "comments": {"nodes": [{"author": {"login": "alf"}, "createdAt": "2026-11-06T10:00:00Z"}]}}
+mine = {"author": {"login": "me"}, "commits": {"nodes": [{"commit": {"committedDate": "2026-11-06T09:00:00Z"}}]},
+        "reviewThreads": {"nodes": [thread]}, "latestReviews": {"nodes": []}}
+log = []
+assert asks(mine)
+log = [{"pr": "x/y#1", "kind": "fix", "at": iso("2026-11-06T11:00:00Z") * 1000}]
+assert not asks(mine)
+log = [{"pr": "x/y#1", "kind": "fix", "at": iso("2026-11-06T09:30:00Z") * 1000}]
+assert asks(mine)
 print("ok")
