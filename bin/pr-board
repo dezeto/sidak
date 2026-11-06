@@ -241,10 +241,12 @@ def key(pr): return f'{pr["repository"]["nameWithOwner"]}#{pr["number"]}'
 fix_path = os.path.join(os.path.dirname(state_path), "autofix.json")
 fixed = json.load(open(fix_path)) if os.path.exists(fix_path) else {}
 # A failed run starts again: a manual one on the next tick (I asked for it), an Auto one once per PR after an hour (a cmux hiccup, a
-# rate limit), kept in autofix.json "<key> retry". Failing again, it is left to me.
+# rate limit), kept in autofix.json "<key> retry". Failing again, it is left to me. One whose tab I closed (claude-review settle: closed)
+# never starts again: I stopped it.
 def done(pr):
     entry = state.get(key(pr))
     if entry is None or entry.get("state") != "failed": return entry is not None
+    if entry.get("closed"): return True
     return bool(entry.get("auto")) and (key(pr) + " retry" in fixed or now * 1000 - entry.get("at", 0) < 3600 * 1000)
 # claude-review without a checkout exits before marking, so such a PR would reopen every tick.
 def checked_out(repo): return os.path.isdir(os.path.join(os.path.expanduser(config["repos"]), repo, ".git"))

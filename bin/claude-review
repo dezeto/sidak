@@ -48,6 +48,8 @@ if prev.get("run", 0) > int(run): sys.exit()
 data[key] = {"state": state, "at": int(time.time() * 1000), "model": model, "depth": depth, "run": int(run)}
 # pr-board auto counts these against its daily cap and never retries one that failed.
 if auto: data[key]["auto"] = True
+# settle: the tab was closed mid-run (pr-board done).
+if os.environ.get("CLOSED"): data[key]["closed"] = True
 # The panel and the finish notification show it; empty on a self-check, which posts nothing.
 verdict = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes", "COMMENTED": "commented"}.get(verdict)
 if verdict: data[key]["verdict"] = verdict
@@ -91,11 +93,12 @@ start=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 started=$(date +%s)
 posted() { verdict=$(gh api "repos/$REPO/pulls/$n/reviews" --jq "[.[] | select(.user.login == \"$login\" and .submitted_at > \"$start\")] | last | .state // \"\"" 2>/dev/null); [[ -n $verdict ]]; }
 settle() {
-  trap - HUP TERM; kill $watcher 2>/dev/null
-  # First and under nohup: the closing tab kills this trap before a slow GitHub call returns.
+  # Ignored, not reset: the closing tab sends a second hangup, which killed this trap mid GitHub call and left the card "running".
+  trap '' HUP TERM; kill $watcher 2>/dev/null
   nohup git -C $CRM worktree remove --force "$wt" >/dev/null 2>&1 &
   # The handoff (on my own PR, the fix list) is the run's last step: written means done, even with the tab closed after.
-  { posted || handed_off; } && mark reviewed || mark failed; exit 129
+  # Neither posted nor handed off: I closed it mid-run, so failed and closed, which pr-board auto never starts again.
+  { posted || handed_off; } && mark reviewed || CLOSED=1 mark failed; exit 129
 }
 finish() { echo; echo "review $repo#$n finished (exit $1)"; git -C $CRM worktree remove --force "$wt" 2>/dev/null; exec zsh; }
 
