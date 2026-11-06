@@ -570,11 +570,12 @@ PY
 }
 
 # The day's review report (bin/daily-report) in a background cmux tab, weekdays from settings.json reportHour (default 18) on, once a
-# day: its reports/<day>.json is the mark, made before the tab opens, so a tab that fails does not open again every tick.
+# day: reports/<day>.started is the mark, made before the tab opens, so a tab that fails does not open again every tick. Only this
+# makes it: a daily-report run by hand earlier in the day does not stop the evening's.
 report() {
   local day=$(date +%F) hour=$(jq -r '.reportHour // 18' $SETTINGS 2>/dev/null)
-  (( $(date +%u) <= 5 && $(date +%k) >= ${hour:-18} )) && [[ ! -e ${STATE:h}/reports/$day.json && -z ${DRY:-} ]] || return 0
-  mkdir -p ${STATE:h}/reports; : > ${STATE:h}/reports/$day.json
+  (( $(date +%u) <= 5 && $(date +%k) >= ${hour:-18} )) && [[ ! -e ${STATE:h}/reports/$day.started && -z ${DRY:-} ]] || return 0
+  mkdir -p ${STATE:h}/reports; : > ${STATE:h}/reports/$day.started
   CMUX_QUIET=1 CMUX_SOCKET_PASSWORD=$(tr -d '[:space:]' < ~/.config/cmux/socket-password 2>/dev/null) /Applications/cmux.app/Contents/Resources/bin/cmux \
     new-workspace --focus false --name "report $day" --cwd $SIDAK_DIR --command "${(q)SIDAK_DIR}/bin/daily-report $day" >/dev/null
 }
@@ -660,9 +661,9 @@ PY
 # PRs to review ($INBOX, Sidak.app's count), my PRs ready to merge, and what Auto did since the last brief (autolog.json; the first
 # one looks back 18 hours). brief-day keeps the last brief's time. Prints nothing the rest of the day.
 brief() {
-  # The evening's report, once daily-report has published it (it writes report-url last): "<line>\t<link>", once a day.
+  # The report, once daily-report has published it (it writes report-url last): "<line>\t<link>", once a publish.
   local url_file=${STATE:h}/report-url told=${STATE:h}/reports/$(date +%F).told
-  if [[ -s $url_file && $(date -r $url_file +%F) == $(date +%F) && ! -e $told ]]; then
+  if [[ -s $url_file && $(date -r $url_file +%F) == $(date +%F) && ( ! -e $told || $url_file -nt $told ) ]]; then
     : > $told
     print -r -- "Daily report ready: what happened today on $(jq '.prs | length' ${STATE:h}/reports/$(date +%F).json 2>/dev/null || print your) PRs"$'\t'"$(head -1 $url_file)"
     return 0
