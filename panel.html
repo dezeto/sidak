@@ -103,8 +103,7 @@
   :root[data-remote][data-settings] #foot::before { filter: blur(8px); opacity: 0.5; }
   :root[data-remote] #foot .sign { order: 5; min-height: 18px; margin: 0; }
   :root[data-remote] #week { order: 6; width: 32px; height: 32px; margin: -7px 0 -7px auto; }
-  :root[data-remote] #report { order: 6; width: 32px; height: 32px; margin: -7px 0; }
-  :root[data-remote] #week .icon, :root[data-remote] #report .icon, :root[data-remote] #refresh .icon { width: 17px; height: 17px; }
+  :root[data-remote] #week .icon, :root[data-remote] #refresh .icon { width: 17px; height: 17px; }
   :root[data-remote] #refresh { order: 7; width: 32px; height: 32px; margin: -7px -8px -7px 0; }
   /* Groups, like iOS Settings: each section's rows on one rounded card, hairlines between them; section labels as titles. */
   :root[data-remote] { --group: #fff; --group-line: rgba(60, 60, 67, 0.18); }
@@ -754,17 +753,20 @@
   #status[data-error='true'] { color: var(--red); }
   #refresh { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -8px; border-radius: 14px; }
   #refresh .icon { width: 13px; height: 13px; }
-  #week, #report { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -2px -7px 0; border-radius: 14px; color: inherit; }
-  #week .icon, #report .icon { width: 13px; height: 13px; }
-  #report { margin-left: -8px; }
-  #report[hidden] { display: none; }
-  #week:hover, #report:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
+  #week { display: grid; place-items: center; flex: none; width: 28px; height: 28px; margin: -7px -2px -7px 0; border-radius: 14px; color: inherit; }
+  #week .icon { width: 13px; height: 13px; }
+  #week:hover { background: var(--lg-bg-interactive); color: var(--lg-ink); }
   /* This week (panel.js openWeek), in the sheet: four tiles, then the Inbox PRs waiting longest. */
   .week-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
   .week-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: rgba(127, 127, 127, 0.12); }
   .week-tile b { font-size: 24px; font-weight: 700; line-height: 28px; font-variant-numeric: tabular-nums; }
   .week-tile span { font-size: 13px; font-weight: 600; }
   .week-tile small { font-size: 12px; color: var(--lg-ink-muted); }
+  .week-report { display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; border-radius: 16px; background: rgba(127, 127, 127, 0.12); color: inherit; text-decoration: none; }
+  .week-report:hover { background: var(--lg-bg-interactive); }
+  .week-report .icon { flex: none; width: 20px; height: 20px; }
+  .week-report span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; }
+  .week-report small { font-size: 12px; font-weight: 400; color: var(--lg-ink-muted); }
   .week-label { margin: 16px 0 6px; font-size: 13px; font-weight: 600; color: var(--lg-ink-muted); }
   .week-waiting { margin-top: 0; }
   .week-pruned { display: flex; align-items: center; min-height: 36px; padding: 0 16px; font-size: 13px; color: var(--lg-ink-muted); }
@@ -953,7 +955,7 @@
     <div class="chips"><span id="vip-list"></span><input id="vip" name="vip" type="text" spellcheck="false" autocomplete="off" list="vip-people" placeholder="login or email…" /><datalist id="vip-people"></datalist></div>
   </div>
 </section></div>
-<span id="foot-config"></span><span id="used" hidden></span><span id="status" aria-live="polite"></span><button id="week" type="button" title="This week" aria-label="This week's reviews"><svg class="icon" aria-hidden="true"><use href="#i-week" /></svg></button><a id="report" href="" target="_blank" hidden title="Daily report" aria-label="Today's review report"><svg class="icon" aria-hidden="true"><use href="#i-report" /></svg></a><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
+<span id="foot-config"></span><span id="used" hidden></span><span id="status" aria-live="polite"></span><button id="week" type="button" title="This week and the daily report" aria-label="This week's reviews and the daily report"><svg class="icon" aria-hidden="true"><use href="#i-week" /></svg></button><button id="refresh" type="button" title="Sync PRs now (⇧R)" aria-label="Sync PRs now"><svg class="icon" aria-hidden="true"><use href="#i-refresh" /></svg></button></footer>
 <dialog id="sheet" aria-label="Pull request"></dialog>
 <div id="menu" popover>
   <button type="button" data-do="zed">Open in Zed</button>

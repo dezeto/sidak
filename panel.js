@@ -938,12 +938,9 @@ function renderHeader(space, index, syncStatus) {
   refresh.classList.remove('spinning');
 }
 
-// The daily report's link, which bin/daily-report writes to report-url as it publishes: the footer's report button opens it.
-function showReport(text) {
-  const link = document.getElementById('report'), url = text.trim();
-  link.hidden = !url.startsWith('https://claude.ai/');
-  if (!link.hidden) link.href = url;
-}
+// The daily report's link, which bin/daily-report writes to report-url as it publishes: the This week sheet opens it.
+let reportUrl = '';
+const showReport = (text) => (reportUrl = text.trim().startsWith('https://claude.ai/') ? text.trim() : '');
 
 async function render() {
   const [{ sections = [], syncedAt, syncError }, spaces, state, stored, file] = await Promise.all([
@@ -1145,6 +1142,14 @@ function autoLog() {
   if (pruned) list.append(el('span', { className: 'week-pruned', textContent: `Deleted ${pruned} merged local branch${pruned === 1 ? '' : 'es'}` }));
   return log.length || pruned ? [el('p', { className: 'week-label', textContent: `Auto did · ${log.length + pruned} this week` }), list] : [];
 }
+function reportLink() {
+  const link = el('a', { className: 'week-report', href: reportUrl, target: '_blank' });
+  const words = el('span', { textContent: 'Daily report' });
+  words.append(el('small', { textContent: 'Who did what on the PRs we reviewed, each weekday at 18:00' }));
+  link.append(icon('i-report'), words);
+  return link;
+}
+
 function openWeek() {
   const since = Date.now() - WEEK;
   const runs = Object.values(lastState)
@@ -1174,7 +1179,8 @@ function openWeek() {
   }
   sheet.replaceChildren(
     el('div', { className: 'sheet-grab' }), el('p', { className: 'sheet-title', textContent: 'This week' }),
-    el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }), tiles,
+    el('p', { className: 'sheet-meta', textContent: 'Claude\'s reviews in the last seven days' }),
+    ...(reportUrl ? [reportLink()] : []), tiles,
     ...(longest.length ? [el('p', { className: 'week-label', textContent: 'Waiting on you longest' }), waiting] : []),
     ...autoLog(),
   );
