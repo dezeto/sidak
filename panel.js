@@ -938,6 +938,13 @@ function renderHeader(space, index, syncStatus) {
   refresh.classList.remove('spinning');
 }
 
+// The daily report's link, which bin/daily-report writes to report-url as it publishes: the footer's report button opens it.
+function showReport(text) {
+  const link = document.getElementById('report'), url = text.trim();
+  link.hidden = !url.startsWith('https://claude.ai/');
+  if (!link.hidden) link.href = url;
+}
+
 async function render() {
   const [{ sections = [], syncedAt, syncError }, spaces, state, stored, file] = await Promise.all([
     chrome.storage.local.get(['sections', 'syncedAt', 'syncError']),
@@ -946,6 +953,7 @@ async function render() {
     loadSettings(),
     loadConfig(),
     fetch(chrome.runtime.getURL('autolog.json'), { cache: 'no-store' }).then((res) => (res.ok ? res.json() : [])).catch(() => []).then((log) => (autoLogEntries = log)),
+    fetch(chrome.runtime.getURL('report-url'), { cache: 'no-store' }).then((res) => (res.ok ? res.text() : '')).catch(() => '').then(showReport),
   ]);
   config = { ...NO_CONFIG, ...file };
   save('config', config);
